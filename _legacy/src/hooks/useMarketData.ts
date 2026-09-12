@@ -1,0 +1,350 @@
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { 
+  GoldPriceData, 
+  FuturesPriceData, 
+  EconomicNewsItem, 
+  MLPrediction 
+} from '../types';
+import { 
+  fetchGoldPriceWithStatus, 
+  triggerAutoCalibration, 
+  setAutoCalibratePricingMode 
+} from '../services/goldApiService';
+import { fetchLiveGoldFutures, getGoldFuturesData } from '../services/futuresService';
+import { fetchLiveEconomicNews, GOLD_ECONOMIC_NEWS } from '../services/newsService';
+import { fetchLiveMLForecast, calculateMLPredictions } from '../services/mlService';
+
+export type ConnectionStatus = 'connected' | 'reconnecting' | 'fallback' | 'failed';
+
+export function useMarketData(currentBias: 'BULLISH' | 'BEARISH' | 'NEUTRAL') {
+  const [priceData, setPriceData] = useState<GoldPriceData | null>(null);
+  const [futuresData, setFuturesData] = useState<FuturesPriceData | null>(null);
+  const [newsData, setNewsData] = useState<EconomicNewsItem[]>(GOLD_ECONOMIC_NEWS);
+  const [mlData, setMlData] = useState<Record<'15M' | '1H' | '4H' | '1D', MLPrediction> | null>(null);
+  const [isLoadingPrice, setIsLoadingPrice] = useState<boolean>(false);
+  const [activeScenario, setActiveScenario] = useState<string>('جاري التهيئة والاتصال ببوابة Gate.io Spot API v4 (XAU/USD Spot)...');
+  
+  // Connection diagnostics & resilience states
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('reconnecting');
+  const [consecutiveErrors, setConsecutiveErrors] = useState<number>(0);
+  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
+
+  // References to preserve state across polling intervals without stale closures
+  const isCustomScenario = useRef(false);
+  const lastKnownPriceRef = useRef<number | null>(null);
+  const consecutiveErrorsRef = useRef<number>(0);
+  const isFetchingRef = useRef<boolean>(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const currentBiasRef = useRef(currentBias);
+
+  useEffect(() => {
+    currentBiasRef.current = currentBias;
+  }, [currentBias]);
+
+  // Active current price derived from priceData (strict null fallback)
+  const currentPrice: number | null = priceData?.price ?? null;
+
+  /**
+   * Real-time HTTP Polling cycle to fetch live spot price from Tencent API
+   * Runs every 3 seconds (3000ms) with automated fallback & fault tolerance
+   */
+  const pollTencentFeed = useCallback(async (isManualTrigger = false) => {
+    // Avoid queuing concurrent requests unless forced
+    if (isFetchingRef.current && !isManualTrigger) {
+      return;
+    }
+
+    // Cancel any previous hanging in-flight request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    isFetchingRef.current = true;
+
+    try {
+      const result = await fetchGoldPriceWithStatus(
+        lastKnownPriceRef.current,
+        controller.signal
+      );
+
+      if (result.isSuccess) {
+        // Successful poll from Tencent API
+        consecutiveErrorsRef.current = 0;
+        setConsecutiveErrors(0);
+        setConnectionStatus('connected');
+        setLastSyncTime(new Date());
+
+        const spot = result.data;
+        lastKnownPriceRef.current = spot.price;
+        setPriceData(spot);
+
+        if (!isCustomScenario.current) {
+          setActiveScenario(
+            spot.statusMessageAr || 'تغذية سحابية مباشرة ونشطة من منصة Gate.io Spot API v4 (XAU/USD Spot)'
+          );
+        }
+
+        // Concurrently update dependent institutional services (Futures & ML)
+        if (typeof spot.price === 'number' && spot.price > 0) {
+          Promise.allSettled([
+            fetchLiveGoldFutures(spot.price),
+            fetchLiveMLForecast(spot.price, currentBiasRef.current),
+          ]).then(([futuresRes, mlRes]) => {
+            if (futuresRes.status === 'fulfilled' && futuresRes.value) {
+              setFuturesData(futuresRes.value);
+            }
+            if (mlRes.status === 'fulfilled' && mlRes.value) {
+              setMlData(mlRes.value);
+            }
+          });
+        }
+      } else {
+        // Programmatic connection failure handling
+        consecutiveErrorsRef.current += 1;
+        const errCount = consecutiveErrorsRef.current;
+        setConsecutiveErrors(errCount);
+
+        const newStatus: ConnectionStatus = errCount >= 3 ? 'failed' : 'reconnecting';
+        setConnectionStatus(newStatus);
+
+        // Safeguard: Never lose the price! Keep last known price active
+        const fallbackPrice = lastKnownPriceRef.current ?? result.data.price ?? 4468.50;
+        const failMessage = errCount < 3
+          ? `جاري إعادة الاتصال بمحرك Tencent API السحابي (محاولة ${errCount})...`
+          : `انقطاع مؤقت بالشبكة - تم تثبيت آخر سعر ($${fallbackPrice.toFixed(2)}) وجاري المحاولة كل 3 ثوانٍ`;
+
+        const preservedData: GoldPriceData = {
+          ...result.data,
+          price: fallbackPrice,
+          isOffline: true,
+          statusMessageAr: failMessage,
+          updatedAt: new Date().toISOString(),
+        };
+
+        setPriceData(preservedData);
+
+        if (!isCustomScenario.current) {
+          setActiveScenario(failMessage);
+        }
+
+        // Fallback for futures quote if missing
+        if (fallbackPrice > 0) {
+          setFuturesData((prev) => prev || getGoldFuturesData(fallbackPrice));
+        }
+      }
+    } catch (err: any) {
+      if (err?.name === 'AbortError') {
+        // Cancelled by a new polling cycle or component unmount
+        return;
+      }
+
+      consecutiveErrorsRef.current += 1;
+      const errCount = consecutiveErrorsRef.current;
+      setConsecutiveErrors(errCount);
+      setConnectionStatus(errCount >= 3 ? 'failed' : 'reconnecting');
+
+      const fallbackPrice = lastKnownPriceRef.current ?? 4468.50;
+      const errorMsg = `فشل الاتصال اللحظي (${err?.message || 'Network Timeout'}) - جاري المحاولة كل 3 ثوانٍ`;
+
+      setPriceData((prev) => ({
+        ...(prev || {
+          price: fallbackPrice,
+          currency: 'USD',
+          symbol: 'XAUUSD / GC',
+          name: 'Gold Spot & Futures (تخزين مؤقت سحابي)',
+          updatedAt: new Date().toISOString(),
+          source: 'cloud_engine',
+          isOffline: true,
+        }),
+        price: fallbackPrice,
+        isOffline: true,
+        statusMessageAr: errorMsg,
+      }));
+
+      if (!isCustomScenario.current) {
+        setActiveScenario(errorMsg);
+      }
+    } finally {
+      isFetchingRef.current = false;
+      setIsLoadingPrice(false);
+    }
+  }, []);
+
+  // Initial load and continuous 3-second (3000ms) HTTP polling engine
+  useEffect(() => {
+    setIsLoadingPrice(true);
+    pollTencentFeed(true);
+
+    // Strict 3-second HTTP Polling ticker
+    const interval = setInterval(() => {
+      if (!isCustomScenario.current) {
+        pollTencentFeed();
+      }
+    }, 3000);
+
+    // Browser network connectivity listeners
+    const handleOnline = () => {
+      consecutiveErrorsRef.current = 0;
+      setConnectionStatus('reconnecting');
+      pollTencentFeed(true);
+    };
+
+    const handleOffline = () => {
+      setConnectionStatus('failed');
+      setPriceData((prev) => prev ? {
+        ...prev,
+        isOffline: true,
+        statusMessageAr: 'انقطع الاتصال بالإنترنت - تم تثبيت السعر الحالي حتى عودة الشبكة',
+      } : null);
+    };
+
+    // Tab visibility recovery: instantly refresh price when tab becomes visible
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && !isCustomScenario.current) {
+        pollTencentFeed(true);
+      }
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [pollTencentFeed]);
+
+  // Load economic news less frequently (every 60 seconds)
+  useEffect(() => {
+    fetchLiveEconomicNews().then(setNewsData).catch(() => {});
+    const newsInterval = setInterval(() => {
+      fetchLiveEconomicNews().then(setNewsData).catch(() => {});
+    }, 60000);
+    return () => clearInterval(newsInterval);
+  }, []);
+
+  /**
+   * Set custom simulated price (pauses live polling until manually resumed)
+   */
+  const setCustomPrice = (price: number, label: string) => {
+    isCustomScenario.current = true;
+    const validPrice = typeof price === 'number' && !isNaN(price) && price > 0 ? price : 4337.53;
+    lastKnownPriceRef.current = validPrice;
+
+    setPriceData({
+      price: Number(validPrice.toFixed(2)),
+      currency: 'USD',
+      symbol: 'XAU/USD (معايرة يدوية)',
+      name: `سعر محاكاة يدوي (${label})`,
+      updatedAt: new Date().toISOString(),
+      source: 'gateio_cfd',
+      isOffline: false,
+      statusMessageAr: `سعر يدوي تجريبي: $${validPrice.toFixed(2)}`,
+      change24h: -1.80,
+      high24h: validPrice + 12,
+      low24h: validPrice - 15,
+      spreadPoints: 20,
+      spreadPips: 2.0,
+      spreadOffset: 0,
+      spreadOffsetFormatted: '0.00$',
+      referencePrice: validPrice,
+      pricingMode: 'manual',
+      autoCalibrated: false,
+    });
+    setFuturesData(getGoldFuturesData(validPrice));
+    setMlData(calculateMLPredictions(validPrice, currentBias));
+    setActiveScenario(label);
+  };
+
+  /**
+   * Automatic Calibration: Instantly locks the entire system to Gate CFD (XAUUSD)
+   */
+  const calibrateToCfd = async () => {
+    isCustomScenario.current = false;
+    setIsLoadingPrice(true);
+    try {
+      const res = await triggerAutoCalibration();
+      if (res.quote) {
+        lastKnownPriceRef.current = res.quote.price;
+        setPriceData(res.quote);
+        setActiveScenario('الضبط التلقائي نشط ومطابق لشارت Gate CFD (XAUUSD) الحي');
+        if (typeof res.quote.price === 'number') {
+          fetchLiveGoldFutures(res.quote.price).then(setFuturesData).catch(() => {});
+          fetchLiveMLForecast(res.quote.price, currentBiasRef.current).then(setMlData).catch(() => {});
+        }
+      }
+    } catch {
+      // If server route failed, poll directly
+      await pollTencentFeed(true);
+    } finally {
+      setIsLoadingPrice(false);
+    }
+  };
+
+  /**
+   * Switch calibration pricing mode (Gate CFD vs Spot vs Manual)
+   */
+  const switchPricingMode = async (mode: 'gateio_cfd' | 'gateio_spot' | 'manual', manualPrice?: number) => {
+    if (mode === 'manual') {
+      isCustomScenario.current = true;
+    } else {
+      isCustomScenario.current = false;
+    }
+    setIsLoadingPrice(true);
+    try {
+      const res = await setAutoCalibratePricingMode(mode, manualPrice);
+      if (res.quote) {
+        lastKnownPriceRef.current = res.quote.price;
+        setPriceData(res.quote);
+        setActiveScenario(res.messageAr || 'تم تحديث نمط التسعير');
+        if (typeof res.quote.price === 'number') {
+          fetchLiveGoldFutures(res.quote.price).then(setFuturesData).catch(() => {});
+          fetchLiveMLForecast(res.quote.price, currentBiasRef.current).then(setMlData).catch(() => {});
+        }
+      }
+    } catch {
+      await pollTencentFeed(true);
+    } finally {
+      setIsLoadingPrice(false);
+    }
+  };
+
+  /**
+   * Resumes live HTTP polling from Gate.io API
+   */
+  const resumeLiveFeed = () => {
+    isCustomScenario.current = false;
+    consecutiveErrorsRef.current = 0;
+    setConsecutiveErrors(0);
+    calibrateToCfd();
+  };
+
+  return {
+    priceData,
+    setPriceData,
+    futuresData,
+    setFuturesData,
+    newsData,
+    mlData,
+    isLoadingPrice,
+    activeScenario,
+    currentPrice,
+    connectionStatus,
+    consecutiveErrors,
+    lastSyncTime,
+    isReconnecting: connectionStatus === 'reconnecting',
+    loadMarketData: pollTencentFeed,
+    refreshNow: () => pollTencentFeed(true),
+    setCustomPrice,
+    resumeLiveFeed,
+    calibrateToCfd,
+    switchPricingMode,
+  };
+}

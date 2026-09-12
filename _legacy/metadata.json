@@ -1,0 +1,6 @@
+{
+  "name": "XAUUSD SMC Trading Bot",
+  "description": "Institutional Smart Money Concept (SMC) trading bot and analysis dashboard for Gold (XAUUSD) with live price tracking, liquidity mapping, Telegram dispatch, and complete GitHub deployment setup.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

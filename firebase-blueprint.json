@@ -1,0 +1,63 @@
+{
+  "entities": {
+    "signals": {
+      "title": "SMC Signals",
+      "description": "Historical archive of SMC institutional signals generated on Gold (XAUUSD)",
+      "type": "object",
+      "properties": {
+        "bias": { "type": "string", "description": "Market bias: BULLISH or BEARISH" },
+        "currentPrice": { "type": "number", "description": "Spot gold price at generation time" },
+        "entryMin": { "type": "number", "description": "Minimum entry price in OB/FVG zone" },
+        "entryMax": { "type": "number", "description": "Maximum entry price in OB/FVG zone" },
+        "stopLoss": { "type": "number", "description": "Protected stop loss level using wick filter" },
+        "tp1": { "type": "number", "description": "Target take-profit 1" },
+        "tp2": { "type": "number", "description": "Target take-profit 2" },
+        "tp3": { "type": "number", "description": "Target take-profit 3" },
+        "riskReward": { "type": "number", "description": "Risk to reward ratio (minimum 1:2.0)" },
+        "status": { "type": "string", "description": "ACTIVE, MITIGATED, HIT_TP, HIT_SL" },
+        "source": { "type": "string", "description": "Source algorithm or 15m cron cycle" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["bias", "currentPrice", "entryMin", "entryMax", "stopLoss", "riskReward", "createdAt"]
+    },
+    "trade_journal": {
+      "title": "Trade Journal & Institutional Memory",
+      "description": "Journal entries of mitigated order blocks, bounce accuracy, and post-trade performance",
+      "type": "object",
+      "properties": {
+        "zoneName": { "type": "string", "description": "Name or price range of the order block" },
+        "type": { "type": "string", "description": "BULLISH_OB or BEARISH_OB" },
+        "entryPrice": { "type": "number", "description": "Price level of the tested zone" },
+        "reactionResult": { "type": "string", "description": "WIN, LOSS, or PARTIAL" },
+        "pipsCaptured": { "type": "number", "description": "Number of pips or dollars captured" },
+        "riskRewardAchieved": { "type": "number", "description": "Realized R:R ratio" },
+        "notes": { "type": "string", "description": "Institutional notes and order flow context" },
+        "testedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["zoneName", "type", "entryPrice", "reactionResult", "testedAt"]
+    },
+    "execution_logs": {
+      "title": "Execution Logs",
+      "description": "Automated 15-minute cron cycle logs and risk safeguard events",
+      "type": "object",
+      "properties": {
+        "step": { "type": "string", "description": "Workflow phase or trigger name" },
+        "status": { "type": "string", "description": "success, warning, or error" },
+        "message": { "type": "string", "description": "Detailed log message" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["step", "status", "message", "timestamp"]
+    },
+    "platform_config": {
+      "title": "Platform Settings",
+      "description": "Persisted SMC configuration parameters and Telegram bot settings",
+      "type": "object",
+      "properties": {
+        "smcConfig": { "type": "object", "description": "SMC parameters like minRiskReward, compressionAtrThreshold, etc." },
+        "telegramConfig": { "type": "object", "description": "Telegram bot token and channel ID" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["updatedAt"]
+    }
+  }
+}

@@ -1,0 +1,25 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // XAUUSD SMC Quant Trading Platform Collections
+    match /signals/{signalId} {
+      allow read, write: if true;
+    }
+
+    match /trade_journal/{itemId} {
+      allow read, write: if true;
+    }
+
+    match /execution_logs/{logId} {
+      allow read, write: if true;
+    }
+
+    match /platform_config/{configId} {
+      allow read, write: if true;
+    }
+
+    match /proximity_alerts/{alertId} {
+      allow read, write: if true;
+    }
+  }
+}
