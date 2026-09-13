@@ -1,3 +1,5 @@
+import type { Regime } from './engine/types';
+
 export interface VSAAbsorptionData {
   candleVolume: number;
   priceRange: number;
@@ -18,7 +20,7 @@ export interface GoldPriceData {
   symbol: string;
   name: string;
   updatedAt: string;
-  source: 'gateio_cfd' | 'gateio_spot' | 'live_api' | 'fallback' | 'scenario' | 'tencent_gc' | 'eastmoney_gc' | 'cloud_engine';
+  source: 'gateio_cfd' | 'gateio_spot' | 'live_api' | 'fallback' | 'scenario' | 'tencent_gc' | 'eastmoney_gc' | 'cloud_engine' | 'gold-api';
   isOffline?: boolean;
   statusMessageAr?: string;
   change24h?: number;
@@ -278,6 +280,22 @@ export interface SMCAnalysis {
     brokerServer: string;
     symbol: string;
     pointsPipsSummary?: string;
+  };
+  /** Optional: real engine result (from RealSMCEngine). */
+  realEngine?: {
+    asOfIndex: number;
+    asOfTime: number;
+    atrCurrent: number | null;
+    regime: Regime;
+    confluenceScore: number;
+    confluenceEligible: boolean;
+    reasonCodes: string[];
+    swingCount: number;
+    breakCount: number;
+    fvgCount: number;
+    obCount: number;
+    levelCount: number;
+    sweepCount: number;
   };
 }
 

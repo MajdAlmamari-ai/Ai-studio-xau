@@ -5,7 +5,10 @@ import { MultiTimeframeSMCEngineState } from '../types';
  * Connects to the backend institutional MTF engine or computes a robust local fallback
  */
 export async function fetchMultiTimeframeSMC(currentPrice?: number | null): Promise<MultiTimeframeSMCEngineState> {
-  const p = typeof currentPrice === 'number' && currentPrice > 0 ? currentPrice : 4468.50;
+  const p = typeof currentPrice === 'number' && currentPrice > 0 ? currentPrice : null;
+  if (p === null) {
+    throw new Error('PRICE_UNAVAILABLE: fetchMultiTimeframeSMC requires a valid price.');
+  }
 
   try {
     const res = await fetch(`/api/smc/multi-timeframe?price=${p}`, {

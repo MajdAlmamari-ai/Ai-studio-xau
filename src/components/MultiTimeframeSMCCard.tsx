@@ -64,7 +64,7 @@ export const MultiTimeframeSMCCard: React.FC<MultiTimeframeSMCCardProps> = ({
     loadData();
   }, [currentPrice]);
 
-  const p = currentPrice ?? mtfData?.currentPrice ?? 4468.50;
+  const p = currentPrice ?? mtfData?.currentPrice ?? 0;
 
   const handleCopyExecutionSignal = () => {
     if (!mtfData) return;

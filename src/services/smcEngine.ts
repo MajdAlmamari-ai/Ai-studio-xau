@@ -7,6 +7,9 @@ import {
   FairValueGap, 
   OrderBlockDetail 
 } from '../types';
+import { fetchGateIoCandlesticks } from './gateIoService';
+import { runRealSMCEngine } from '../engine/engine';
+import { convertRealAnalysisToSMC } from './smcEngineAdapter';
 /**
  * ------------------------------------------------------------------------------------
  * خوارزمية درجة التآكل والنضارة المؤسساتية (Institutional Zone Freshness Algorithm)
@@ -128,8 +131,17 @@ export const DEFAULT_SMC_CONFIG: SMCConfig = {
  * - Zone Freshness (0-100% erosion based on barsAge and mitigation)
  * - Market Memory Index
  */
-export function calculateSMC(price: number | null, config: SMCConfig = DEFAULT_SMC_CONFIG): SMCAnalysis {
-  const effectivePrice = (price !== null && !isNaN(price) && price > 0) ? price : 4468.50;
+// === Fallback (kept for offline mode) ===
+function calculateSMCFallback(
+  price: number | null,
+  config: SMCConfig = DEFAULT_SMC_CONFIG,
+): SMCAnalysis {
+  const effectivePrice = (price !== null && !isNaN(price) && price > 0) ? price : null;
+  if (effectivePrice === null) {
+    throw new Error(
+      'PRICE_UNAVAILABLE: calculateSMC requires a valid price.'
+    );
+  }
   const roundedPrice = Number(effectivePrice.toFixed(2));
 
   // 1. Determining Bias
@@ -435,6 +447,29 @@ export function calculateSMC(price: number | null, config: SMCConfig = DEFAULT_S
     orderFlowVolume,
     memoryIndexOBs: memoryOBs,
   };
+}
+
+// === Real async version ===
+export async function calculateSMC(
+  price: number | null,
+  config: SMCConfig = DEFAULT_SMC_CONFIG,
+): Promise<SMCAnalysis> {
+  try {
+    // 1. Fetch REAL candles from Gate.io
+    const candles = await fetchGateIoCandlesticks('futures', '15m', 200);
+    if (!candles || candles.length < 50) {
+      return calculateSMCFallback(price, config);
+    }
+
+    // 2. Run REAL engine
+    const real = runRealSMCEngine(candles);
+
+    // 3. Convert to legacy SMCAnalysis
+    return convertRealAnalysisToSMC(real, config);
+  } catch (err) {
+    // Fallback on any network/API error
+    return calculateSMCFallback(price, config);
+  }
 }
 
 /**

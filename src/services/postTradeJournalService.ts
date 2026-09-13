@@ -8,7 +8,7 @@ export const INITIAL_POST_TRADE_RECORDS: PostTradeRecord[] = [
     id: 'ptr-001',
     date: '2026-09-04 11:15',
     action: 'BUY',
-    entryPrice: 4468.50,
+    entryPrice: 4468.20,
     exitPrice: 4482.00,
     stopLoss: 4464.20,
     takeProfit: 4480.00,

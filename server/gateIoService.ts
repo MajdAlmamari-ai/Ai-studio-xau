@@ -564,6 +564,82 @@ export async function fetchGateIoSpotTrades(
 }
 
 /**
+ * Fetch live futures trades for XAU_USDT (real Gold order flow).
+ * 
+ * This is the CORRECT source for CVD calculation on Gold.
+ * PAXG_USDT is a token and does NOT represent real Gold order flow.
+ */
+export async function fetchGateIoFuturesTrades(
+  contract = 'XAU_USDT',
+  limit = 100,
+): Promise<GateIoSpotTradeFlow> {
+  const url = `https://api.gateio.ws/api/v4/futures/usdt/trades?contract=${contract}&limit=${limit}`;
+  const response = await fetch(url, { headers: { Accept: 'application/json' } });
+  
+  if (!response.ok) {
+    throw new Error(`Gate.io Futures Trades error: ${response.statusText}`);
+  }
+
+  const rawTrades: any[] = await response.json();
+  if (!Array.isArray(rawTrades)) {
+    throw new Error('Invalid futures trades format from Gate.io');
+  }
+
+  let buyVolume = 0;
+  let sellVolume = 0;
+  let totalVolume = 0;
+
+  const trades: GateIoSpotTradeItem[] = rawTrades.map((t) => {
+    const time = Math.floor(parseInt(t.create_time, 10) / 1000);
+    const date = new Date(time * 1000);
+    const side = (t.size > 0 ? 'buy' : 'sell') as 'buy' | 'sell';
+    const amount = Math.abs(parseFloat(t.size)) || 0;
+    const price = parseFloat(t.price) || 0;
+    const volumeUsd = parseFloat((amount * price).toFixed(2));
+
+    if (side === 'buy') {
+      buyVolume += amount;
+    } else {
+      sellVolume += amount;
+    }
+    totalVolume += amount;
+
+    return {
+      id: String(t.id || t.trade_id || ''),
+      createTime: time,
+      timeFormatted: `${date.getUTCHours().toString().padStart(2, '0')}:${date.getUTCMinutes().toString().padStart(2, '0')}:${date.getUTCSeconds().toString().padStart(2, '0')}`,
+      side,
+      amount: parseFloat(amount.toFixed(4)),
+      price,
+      volumeUsd,
+    };
+  });
+
+  const cumulativeDelta = parseFloat((buyVolume - sellVolume).toFixed(4));
+  const tickVelocity = rawTrades.length > 0 
+    ? parseFloat((rawTrades.length / 60).toFixed(2)) 
+    : 0;
+
+  let orderFlowSpeedAr = 'تدفق معتدل';
+  if (tickVelocity > 2.0 || Math.abs(cumulativeDelta) > 10.0) {
+    orderFlowSpeedAr = 'تدفق عالي جداً ⚡';
+  } else if (tickVelocity > 1.0) {
+    orderFlowSpeedAr = 'تدفق نشط';
+  }
+
+  return {
+    trades,
+    buyVolume: parseFloat(buyVolume.toFixed(4)),
+    sellVolume: parseFloat(sellVolume.toFixed(4)),
+    totalVolume: parseFloat(totalVolume.toFixed(4)),
+    cumulativeDelta,
+    tickVelocity,
+    orderFlowSpeedAr,
+    timestamp: new Date().toISOString(),
+  };
+}
+
+/**
  * Master Gateway: Pull Every Part of XAU/USD Spot from Gate.io API
  */
 export async function getGateIoSpotMasterOverview(forceRefresh = false): Promise<GateIoSpotMasterOverview> {

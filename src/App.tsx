@@ -16,6 +16,29 @@ import { useMarketData } from './hooks/useMarketData';
 import { useTradingAutomation } from './hooks/useTradingAutomation';
 import { loadPlatformConfigFromFirestore, savePlatformConfigToFirestore } from './services/firestoreService';
 
+const SAFE_DEFAULT_ANALYSIS: SMCAnalysis = {
+  currentPrice: 0,
+  bias: 'NEUTRAL',
+  action: 'WAIT',
+  structure: 'Consolidation (Range-bound)',
+  bsl: 0,
+  ssl: 0,
+  resistance: 0,
+  support: 0,
+  bullishOB: { min: 0, max: 0 },
+  bearishOB: { min: 0, max: 0 },
+  fvgs: [],
+  orderBlocks: [],
+  entryZone: { min: 0, max: 0 },
+  takeProfit: 0,
+  stopLoss: 0,
+  riskRewardRatio: 'N/A',
+  rrNumeric: 0,
+  reason: 'Initializing engine...',
+  timestamp: new Date(0).toISOString(),
+  confluenceScore: 0,
+};
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTabType>('terminal');
   const [isGuideOpen, setIsGuideOpen] = useState<boolean>(false);
@@ -55,7 +78,21 @@ export default function App() {
   } = useMarketData('BULLISH');
 
   // Compute live SMC analysis dynamically based on active price
-  const analysis: SMCAnalysis = calculateSMC(currentPrice, smcConfig);
+  const [analysis, setAnalysis] = useState<SMCAnalysis | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    calculateSMC(currentPrice, smcConfig)
+      .then((result) => {
+        if (!cancelled) setAnalysis(result);
+      })
+      .catch((err) => {
+        console.warn('[App] calculateSMC failed:', err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentPrice, smcConfig]);
 
   // Modern Automation Architecture: 15-minute Loop & 4-Step Execution Cycle Hook
   const {
@@ -148,7 +185,7 @@ export default function App() {
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-4 lg:px-6 py-4 space-y-4">
         <TabContentRenderer
           activeTab={activeTab}
-          analysis={analysis}
+          analysis={analysis ?? SAFE_DEFAULT_ANALYSIS}
           currentPrice={currentPrice}
           priceData={priceData}
           futuresData={futuresData}

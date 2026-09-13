@@ -274,3 +274,97 @@ export const DEFAULT_REGIME_CONFIG: RegimeConfig = {
   lowVolMultiplier: 0.5,
   trendSwingLookback: 4,
 };
+
+export interface ConfluenceFeatures {
+  readonly structureAligned: boolean;
+  readonly regimeTrending: boolean;
+  readonly fvgNearby: boolean;
+  readonly obNearby: boolean;
+  readonly liquiditySweepRecent: boolean;
+  readonly priceInDiscount: boolean | null;
+  readonly higherTimeframeAligned: boolean | null;
+}
+
+export interface ConfluenceResult {
+  readonly score: number;
+  readonly eligible: boolean;
+  readonly features: ConfluenceFeatures;
+  readonly reasonCodes: readonly string[];
+}
+
+export interface ConfluenceConfig {
+  readonly minEligibleScore: number;
+  readonly proximityAtr: number;
+  readonly sweepRecencyBars: number;
+  readonly weightStructure: number;
+  readonly weightRegime: number;
+  readonly weightFvg: number;
+  readonly weightOb: number;
+  readonly weightSweep: number;
+  readonly weightDiscount: number;
+}
+
+export const DEFAULT_CONFLUENCE_CONFIG: ConfluenceConfig = {
+  minEligibleScore: 60,
+  proximityAtr: 2.0,
+  sweepRecencyBars: 10,
+  weightStructure: 25,
+  weightRegime: 20,
+  weightFvg: 15,
+  weightOb: 15,
+  weightSweep: 15,
+  weightDiscount: 10,
+};
+
+export interface EngineConfig {
+  readonly atrPeriod: number;
+  readonly swingConfig: SwingDetectionConfig;
+  readonly breakConfig: BreakDetectionConfig;
+  readonly fvgConfig: FVGDetectionConfig;
+  readonly obConfig: OBDetectionConfig;
+  readonly liquidityConfig: LiquidityDetectionConfig;
+  readonly regimeConfig: RegimeConfig;
+  readonly confluenceConfig: ConfluenceConfig;
+}
+
+export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
+  atrPeriod: 14,
+  swingConfig: { leftBars: 2, rightBars: 2 },
+  breakConfig: DEFAULT_BREAK_CONFIG,
+  fvgConfig: DEFAULT_FVG_CONFIG,
+  obConfig: DEFAULT_OB_CONFIG,
+  liquidityConfig: DEFAULT_LIQUIDITY_CONFIG,
+  regimeConfig: DEFAULT_REGIME_CONFIG,
+  confluenceConfig: DEFAULT_CONFLUENCE_CONFIG,
+};
+
+export interface RealSMCAnalysis {
+  /** As-of index used for analysis. */
+  readonly asOfIndex: number;
+  /** As-of time (from candles[asOfIndex].time). */
+  readonly asOfTime: number;
+  /** Current close price. */
+  readonly currentPrice: number;
+  /** ATR array (full series). */
+  readonly atr: AtrArray;
+  /** Latest ATR value. */
+  readonly atrCurrent: number | null;
+  /** Confirmed swings. */
+  readonly swings: ReadonlyArray<ConfirmedSwing>;
+  /** Structure breaks. */
+  readonly breaks: ReadonlyArray<StructureBreak>;
+  /** FVG zones. */
+  readonly fvgs: ReadonlyArray<FVGZone>;
+  /** Order blocks. */
+  readonly orderBlocks: ReadonlyArray<OrderBlock>;
+  /** Liquidity levels. */
+  readonly levels: ReadonlyArray<LiquidityLevel>;
+  /** Sweep events. */
+  readonly sweeps: ReadonlyArray<SweepEvent>;
+  /** Regime context. */
+  readonly regime: RegimeContext;
+  /** Confluence result. */
+  readonly confluence: ConfluenceResult;
+  /** Reason codes aggregated from all modules. */
+  readonly reasonCodes: readonly string[];
+}

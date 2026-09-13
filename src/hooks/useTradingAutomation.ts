@@ -110,7 +110,7 @@ export function useTradingAutomation(
     }
 
     // Step 2: Market Structural Analysis
-    const freshAnalysis = calculateSMC(currentSpot, smcConfig);
+    const freshAnalysis = await calculateSMC(currentSpot, smcConfig);
     setLogs((prev) => [
       {
         id: Math.random().toString(),

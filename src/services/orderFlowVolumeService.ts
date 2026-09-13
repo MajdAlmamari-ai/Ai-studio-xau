@@ -1,4 +1,67 @@
 import { OrderFlowVolumeData } from '../types';
+import { fetchGateIoFuturesTrades } from '../../server/gateIoService';
+
+export interface OrderFlowResult {
+  ok: boolean;
+  cvd: number;
+  buyVolume: number;
+  sellVolume: number;
+  totalVolume: number;
+  tickVelocity: number;
+  deltaBias: 'STRONG_BUYERS' | 'STRONG_SELLERS' | 'NEUTRAL';
+  source: 'gateio-futures';
+  fetchedAt: number;
+  reason?: {
+    code: string;
+    shortAr: string;
+    detailsAr: string;
+    howToFix: string[];
+  };
+}
+
+export async function fetchRealOrderFlow(): Promise<OrderFlowResult> {
+  try {
+    const flow = await fetchGateIoFuturesTrades('XAU_USDT', 100);
+
+    const cvd = flow.cumulativeDelta;
+    let deltaBias: OrderFlowResult['deltaBias'] = 'NEUTRAL';
+    if (cvd > 5) deltaBias = 'STRONG_BUYERS';
+    else if (cvd < -5) deltaBias = 'STRONG_SELLERS';
+
+    return {
+      ok: true,
+      cvd,
+      buyVolume: flow.buyVolume,
+      sellVolume: flow.sellVolume,
+      totalVolume: flow.totalVolume,
+      tickVelocity: flow.tickVelocity,
+      deltaBias,
+      source: 'gateio-futures',
+      fetchedAt: Date.now(),
+    };
+  } catch (err: any) {
+    return {
+      ok: false,
+      cvd: 0,
+      buyVolume: 0,
+      sellVolume: 0,
+      totalVolume: 0,
+      tickVelocity: 0,
+      deltaBias: 'NEUTRAL',
+      source: 'gateio-futures',
+      fetchedAt: Date.now(),
+      reason: {
+        code: 'FUTURES_TRADES_UNAVAILABLE',
+        shortAr: 'بيانات تدفق الأوامر غير متوفرة',
+        detailsAr: String(err?.message || 'Unknown error'),
+        howToFix: [
+          'تحقق من اتصال Gate.io',
+          'أعد المحاولة بعد دقيقة',
+        ],
+      },
+    };
+  }
+}
 
 /**
  * Solves "The Volume Problem" (Spot Tick Volume vs CME GC Futures Real Volume)

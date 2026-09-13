@@ -270,7 +270,7 @@ export const CandlestickChartCard: React.FC<CandlestickChartCardProps> = ({
             <div className="bg-[#141924] border border-[#232B3E] px-3 py-1.5 rounded-lg flex items-center gap-2">
               <span className="text-zinc-400">السعر اللحظي:</span>
               <span className="text-white font-bold text-sm">
-                ${currentPrice > 0 ? currentPrice.toFixed(2) : '4468.50'}
+                {currentPrice > 0 ? `$${currentPrice.toFixed(2)}` : '---'}
               </span>
             </div>
 

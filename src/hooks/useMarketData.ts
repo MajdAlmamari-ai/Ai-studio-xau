@@ -10,6 +10,7 @@ import {
   triggerAutoCalibration, 
   setAutoCalibratePricingMode 
 } from '../services/goldApiService';
+import { fetchGoldApiSpot } from '../services/goldApiClient';
 import { fetchLiveGoldFutures, getGoldFuturesData } from '../services/futuresService';
 import { fetchLiveEconomicNews, GOLD_ECONOMIC_NEWS } from '../services/newsService';
 import { fetchScenarioProjections, calculateScenarioProjections } from '../services/scenarioService';
@@ -44,8 +45,58 @@ export function useMarketData(currentBias: 'BULLISH' | 'BEARISH' | 'NEUTRAL') {
   // Active current price derived from priceData (strict null fallback)
   const currentPrice: number | null = priceData?.price ?? null;
 
+  async function fetchPriceWithChain(
+    signal: AbortSignal,
+  ): Promise<{
+    price: number;
+    source: string;
+    bid: number | null;
+    ask: number | null;
+    quality: 'REAL' | 'FALLBACK';
+  } | null> {
+    // Attempt 1: Gold-API
+    try {
+      const goldResult = await fetchGoldApiSpot();
+      if (goldResult.ok) {
+        return {
+          price: goldResult.data.price,
+          source: 'gold-api',
+          bid: goldResult.data.bid ?? null,
+          ask: goldResult.data.ask ?? null,
+          quality: 'REAL',
+        };
+      }
+      const failReason = (goldResult as any)?.reason?.code || 'UNKNOWN';
+      console.warn('[useMarketData] Gold-API failed:', failReason);
+    } catch (err) {
+      console.warn('[useMarketData] Gold-API threw:', err);
+    }
+
+    // Attempt 2: Cloud Engine (existing)
+    try {
+      const cloudResult = await fetchGoldPriceWithStatus(
+        lastKnownPriceRef.current,
+        signal,
+      );
+      if (cloudResult.isSuccess && cloudResult.data.price > 0) {
+        return {
+          price: cloudResult.data.price,
+          source: cloudResult.data.source || 'cloud-engine',
+          bid: cloudResult.data.bid ?? null,
+          ask: cloudResult.data.ask ?? null,
+          quality: 'FALLBACK',
+        };
+      }
+    } catch (err) {
+      console.warn('[useMarketData] Cloud Engine failed:', err);
+    }
+
+    // All failed
+    return null;
+  }
+
   /**
-   * Real-time HTTP Polling cycle to fetch live spot price from Tencent API
+   * Real-time HTTP Polling cycle to fetch live spot price from Gold-API / Tencent API
    * Runs every 3 seconds (3000ms) with automated fallback & fault tolerance
    */
   const pollTencentFeed = useCallback(async (isManualTrigger = false) => {
@@ -63,42 +114,49 @@ export function useMarketData(currentBias: 'BULLISH' | 'BEARISH' | 'NEUTRAL') {
     isFetchingRef.current = true;
 
     try {
-      const result = await fetchGoldPriceWithStatus(
-        lastKnownPriceRef.current,
-        controller.signal
-      );
+      const chainResult = await fetchPriceWithChain(controller.signal);
 
-      if (result.isSuccess) {
-        // Successful poll from Tencent API
+      if (chainResult && chainResult.price > 0) {
+        // Successful poll from Gold-API or fallback Cloud Engine
         consecutiveErrorsRef.current = 0;
         setConsecutiveErrors(0);
-        setConnectionStatus('connected');
+        setConnectionStatus(chainResult.quality === 'REAL' ? 'connected' : 'fallback');
         setLastSyncTime(new Date());
 
-        const spot = result.data;
-        lastKnownPriceRef.current = spot.price;
-        setPriceData(spot);
+        lastKnownPriceRef.current = chainResult.price;
+        const spotData: GoldPriceData = {
+          price: chainResult.price,
+          currency: 'USD',
+          symbol: 'XAUUSD',
+          name: 'Gold Spot (XAU/USD)',
+          updatedAt: new Date().toISOString(),
+          source: chainResult.source as any,
+          bid: chainResult.bid,
+          ask: chainResult.ask,
+          spreadPoints: chainResult.bid && chainResult.ask ? Math.round((chainResult.ask - chainResult.bid) * 100) : null,
+          spreadPips: chainResult.bid && chainResult.ask ? Number(((chainResult.ask - chainResult.bid) * 10).toFixed(1)) : null,
+          statusMessageAr: chainResult.quality === 'REAL'
+            ? 'تغذية سحابية مباشرة ونشطة من Gold-API.com (XAU/USD Spot)'
+            : `تغذية احتياطية نشطة (${chainResult.source})`,
+        };
+        setPriceData(spotData);
 
         if (!isCustomScenario.current) {
-          setActiveScenario(
-            spot.statusMessageAr || 'تغذية سحابية مباشرة ونشطة من منصة Gate.io Spot API v4 (XAU/USD Spot)'
-          );
+          setActiveScenario(spotData.statusMessageAr || 'تغذية سعرية لحظية');
         }
 
         // Concurrently update dependent institutional services (Futures & Scenario Projections)
-        if (typeof spot.price === 'number' && spot.price > 0) {
-          Promise.allSettled([
-            fetchLiveGoldFutures(spot.price),
-            fetchScenarioProjections({ currentPrice: spot.price, atr: null, bias: currentBiasRef.current }),
-          ]).then(([futuresRes, scenarioRes]) => {
-            if (futuresRes.status === 'fulfilled' && futuresRes.value) {
-              setFuturesData(futuresRes.value);
-            }
-            if (scenarioRes.status === 'fulfilled' && scenarioRes.value) {
-              setScenarioData(scenarioRes.value);
-            }
-          });
-        }
+        Promise.allSettled([
+          fetchLiveGoldFutures(chainResult.price),
+          fetchScenarioProjections({ currentPrice: chainResult.price, atr: null, bias: currentBiasRef.current }),
+        ]).then(([futuresRes, scenarioRes]) => {
+          if (futuresRes.status === 'fulfilled' && futuresRes.value) {
+            setFuturesData(futuresRes.value);
+          }
+          if (scenarioRes.status === 'fulfilled' && scenarioRes.value) {
+            setScenarioData(scenarioRes.value);
+          }
+        });
       } else {
         // Programmatic connection failure handling
         consecutiveErrorsRef.current += 1;
@@ -108,15 +166,23 @@ export function useMarketData(currentBias: 'BULLISH' | 'BEARISH' | 'NEUTRAL') {
         const newStatus: ConnectionStatus = errCount >= 3 ? 'failed' : 'reconnecting';
         setConnectionStatus(newStatus);
 
-        // Safeguard: Never lose the price! Keep last known price active
-        const fallbackPrice = lastKnownPriceRef.current ?? result.data.price ?? 4468.50;
+        // Safeguard: Keep last known real price active or fail gracefully
+        const fallbackPrice = lastKnownPriceRef.current;
+        if (fallbackPrice === null) {
+          setPriceData(null);
+          setActiveScenario('UNAVAILABLE: No price data.');
+          return;
+        }
         const failMessage = errCount < 3
-          ? `جاري إعادة الاتصال بمحرك Tencent API السحابي (محاولة ${errCount})...`
+          ? `جاري إعادة الاتصال بمصادر الأسعار (محاولة ${errCount})...`
           : `انقطاع مؤقت بالشبكة - تم تثبيت آخر سعر ($${fallbackPrice.toFixed(2)}) وجاري المحاولة كل 3 ثوانٍ`;
 
         const preservedData: GoldPriceData = {
-          ...result.data,
           price: fallbackPrice,
+          currency: 'USD',
+          symbol: 'XAUUSD',
+          name: 'Gold Spot (XAU/USD)',
+          source: 'cloud_engine',
           isOffline: true,
           statusMessageAr: failMessage,
           updatedAt: new Date().toISOString(),
@@ -144,7 +210,12 @@ export function useMarketData(currentBias: 'BULLISH' | 'BEARISH' | 'NEUTRAL') {
       setConsecutiveErrors(errCount);
       setConnectionStatus(errCount >= 3 ? 'failed' : 'reconnecting');
 
-      const fallbackPrice = lastKnownPriceRef.current ?? 4468.50;
+      const fallbackPrice = lastKnownPriceRef.current;
+      if (fallbackPrice === null) {
+        setPriceData(null);
+        setActiveScenario('UNAVAILABLE: No price data.');
+        return;
+      }
       const errorMsg = `فشل الاتصال اللحظي (${err?.message || 'Network Timeout'}) - جاري المحاولة كل 3 ثوانٍ`;
 
       setPriceData((prev) => ({

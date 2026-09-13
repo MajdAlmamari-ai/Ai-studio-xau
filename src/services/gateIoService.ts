@@ -70,6 +70,8 @@ export async function fetchGateIoCandlesticksClient(
   return data.candles || [];
 }
 
+export const fetchGateIoCandlesticks = fetchGateIoCandlesticksClient;
+
 /**
  * Apply Gate.io Live Price directly as the active reference for SMC Quant calculations
  */

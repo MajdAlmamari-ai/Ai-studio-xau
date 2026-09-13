@@ -99,40 +99,9 @@ export const CloudMarketSyncCard: React.FC<CloudMarketSyncCardProps> = ({
     return () => clearInterval(interval);
   }, []);
 
-  const state: CloudStateResponse = cloudData || {
-    currentPrice: 4468.50,
-    bid: 4466.50,
-    ask: 4466.90,
-    spreadPoints: 40,
-    spreadPips: 4.0,
-    high24h: 4488.80,
-    low24h: 4426.20,
-    change24h: -8.10,
-    changePct: -0.18,
-    volume: 95200,
-    lastUpdated: new Date().toISOString(),
-    source: 'Tencent API (hf_GC)',
-    isLive: true,
-    statusMessageAr: 'تغذية سحابية مباشرة ونشطة من خوادم Tencent المالية (تحديث كل 3 ثوانٍ)',
-    referencePrice: 4423.70,
-    spreadOffset: 44.80,
-    spreadOffsetFormatted: '+44.80$',
-    vsa: {
-      candleVolume: 120,
-      priceRange: 0.80,
-      absorptionRatio: 150.0,
-      candleTime: '13:25',
-      candleOpen: 4468.20,
-      candleClose: 4468.50,
-      candleHigh: 4468.90,
-      candleLow: 4468.10,
-      state: 'HIGH_ABSORPTION',
-      stateLabelAr: 'امتصاص مؤسساتي كثيف (High Absorption 🟢)',
-      descriptionAr: 'حجم تداول مرتفع جداً مقارنة بالنطاق السعري الضيق بشمعة الدقيقة؛ صناع السوق يمتصون العروض والطلبات.',
-    },
-  };
+  const state: CloudStateResponse | null = cloudData;
 
-  const effectiveEntry = (entryPrice && entryPrice > 0) ? entryPrice : state.currentPrice;
+  const effectiveEntry = (entryPrice && entryPrice > 0) ? entryPrice : state?.currentPrice;
   const effectiveSL = (stopLoss && stopLoss > 0) ? stopLoss : (effectiveEntry ? effectiveEntry - 9.40 : null);
   const effectiveTP = (takeProfit && takeProfit > 0) ? takeProfit : (effectiveEntry ? effectiveEntry + 26.70 : null);
 
@@ -148,9 +117,9 @@ export const CloudMarketSyncCard: React.FC<CloudMarketSyncCardProps> = ({
 • وقف الخسارة المحمي: $${effectiveSL ? effectiveSL.toFixed(2) : '---'} (المسافة: ${slDistancePips} بيب / ${slDistancePoints} نقطة)
 • الهدف المؤسساتي: $${effectiveTP ? effectiveTP.toFixed(2) : '---'} (المسافة: ${tpDistancePips} بيب / ${tpDistancePoints} نقطة)
 • نسبة العائد للمخاطرة (R:R): 1:${pointsPips?.riskRewardRatio || '2.85'}
-• السبريد اللحظي: ${state.spreadPoints} نقطة (${state.spreadPips} بيب)
-• مؤشر الامتصاص VSA: ${(state.vsa?.absorptionRatio ?? 150).toFixed(1)} (${state.vsa?.stateLabelAr || 'امتصاص معتدل'})
-• المصدر الحي: ${state.source}`;
+• السبريد اللحظي: ${state?.spreadPoints ?? '---'} نقطة (${state?.spreadPips ?? '---'} بيب)
+• مؤشر الامتصاص VSA: ${(state?.vsa?.absorptionRatio ?? 0).toFixed(1)} (${state?.vsa?.stateLabelAr || '---'})
+• المصدر الحي: ${state?.source || '---'}`;
 
   const handleCopyOrder = () => {
     navigator.clipboard.writeText(orderCopyText);
@@ -248,7 +217,14 @@ export const CloudMarketSyncCard: React.FC<CloudMarketSyncCardProps> = ({
         </div>
       </div>
 
-      {/* Grid 1: Live Executive Prices (Bid / Ask / Mid / Spread) */}
+      {!state ? (
+        <div className="p-8 text-center bg-slate-950/60 rounded-lg border border-slate-800 text-slate-400">
+          <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-emerald-400" />
+          <p className="text-sm font-medium">جاري الاتصال بمحرك البث السحابي لجلب الأسعار اللحظية...</p>
+        </div>
+      ) : (
+        <>
+          {/* Grid 1: Live Executive Prices (Bid / Ask / Mid / Spread) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {/* Bid Price */}
         <div className="bg-slate-950/70 border border-slate-800 rounded-lg p-4 relative">
@@ -370,7 +346,7 @@ export const CloudMarketSyncCard: React.FC<CloudMarketSyncCardProps> = ({
           <div className="p-3 rounded-lg bg-slate-900/90 border border-slate-800">
             <span className="text-[11px] text-slate-400 block mb-1">توقيت الشمعة وإغلاقها</span>
             <div className="text-xl font-bold font-mono text-cyan-300">
-              ${(state.vsa?.candleClose ?? 4468.5).toFixed(2)}
+              {state.vsa?.candleClose ? `$${state.vsa.candleClose.toFixed(2)}` : '---'}
             </div>
             <span className="text-[10px] text-slate-500">التوقيت: {state.vsa?.candleTime || '13:25'}</span>
           </div>
@@ -531,6 +507,8 @@ export const CloudMarketSyncCard: React.FC<CloudMarketSyncCardProps> = ({
           </div>
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 };
