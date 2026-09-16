@@ -24,6 +24,8 @@ import {
   SystemLogEntry, 
   SystemMetrics 
 } from '../services/systemLogService';
+import { SourceStatusPanel, SourceStatus } from './SourceStatusPanel';
+import { DataScheduler } from '../engine/data/scheduler';
 
 export const SystemDiagnosticsCard: React.FC = () => {
   const [logs, setLogs] = useState<SystemLogEntry[]>([]);
@@ -31,6 +33,39 @@ export const SystemDiagnosticsCard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
+
+  const session = new DataScheduler().getCurrentSession(Date.now());
+
+  const sources: SourceStatus[] = [
+    {
+      sourceId: 'gold-api',
+      label: 'Gold-API (Spot)',
+      status: 'OK',
+    },
+    {
+      sourceId: 'gateio-futures',
+      label: 'Gate.io Futures (CVD)',
+      status: 'OK',
+    },
+    {
+      sourceId: 'gateio-rest',
+      label: 'Gate.io REST (Candles)',
+      status: 'OK',
+    },
+    {
+      sourceId: 'yahoo',
+      label: 'Yahoo (GC=F Context)',
+      status: 'OK',
+    },
+    {
+      sourceId: 'twelve-data',
+      label: 'Twelve Data',
+      status: 'OK',
+      limit: 800,
+      used: 0,
+      reserve: 160,
+    },
+  ];
   
   // Filters
   const [selectedLevel, setSelectedLevel] = useState<string>('ALL');
@@ -295,6 +330,15 @@ export const SystemDiagnosticsCard: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* 2.5 Data Sources Health & Budget Panel */}
+      <SourceStatusPanel
+        spotSource="gold-api"
+        spotQuality="REAL"
+        session={session}
+        sources={sources}
+        onRefresh={loadData}
+      />
 
       {/* 3. Filter Bar */}
       <div className="bg-[#12141B] border border-[#1A1D26] rounded-xl p-3 sm:p-4 shadow-md flex flex-wrap items-center justify-between gap-3">

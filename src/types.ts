@@ -20,7 +20,7 @@ export interface GoldPriceData {
   symbol: string;
   name: string;
   updatedAt: string;
-  source: 'gateio_cfd' | 'gateio_spot' | 'live_api' | 'fallback' | 'scenario' | 'tencent_gc' | 'eastmoney_gc' | 'cloud_engine' | 'gold-api';
+  source: 'gateio_cfd' | 'gateio_spot' | 'live_api' | 'fallback' | 'scenario' | 'tencent_gc' | 'eastmoney_gc' | 'cloud_engine' | 'gold-api' | 'tradingview' | 'yahoo_gc';
   isOffline?: boolean;
   statusMessageAr?: string;
   change24h?: number;

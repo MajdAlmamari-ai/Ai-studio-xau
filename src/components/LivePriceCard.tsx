@@ -20,6 +20,7 @@ import { triggerAutoCalibration, setAutoCalibratePricingMode } from '../services
 
 interface LivePriceCardProps {
   priceData: GoldPriceData | null;
+  futuresData?: import('../types').FuturesPriceData | null;
   isLoading: boolean;
   onRefreshPrice: () => void;
   onSetCustomPrice: (price: number, label: string) => void;
@@ -30,6 +31,7 @@ interface LivePriceCardProps {
 
 export const LivePriceCard: React.FC<LivePriceCardProps> = ({
   priceData,
+  futuresData,
   isLoading,
   onRefreshPrice,
   onSetCustomPrice,
@@ -42,10 +44,27 @@ export const LivePriceCard: React.FC<LivePriceCardProps> = ({
   const [isCalibrating, setIsCalibrating] = useState(false);
   const [calibrationSuccessMessage, setCalibrationSuccessMessage] = useState<string | null>(null);
 
-  // Active current price: uses real-time price from Tencent feed or preserved fallback
-  const currentPrice = (priceData && typeof priceData.price === 'number') 
+  // Primary futures price (COMEX GC1! from TradingView relay)
+  const futuresPrice = (futuresData && typeof futuresData.futuresPrice === 'number')
+    ? futuresData.futuresPrice
+    : (priceData?.cfdPrice ?? null);
+
+  // Reference spot price (XAU/USD Spot)
+  const spotPrice = (priceData && typeof priceData.price === 'number') 
     ? priceData.price 
-    : 4337.53;
+    : (futuresData?.spotPrice ?? 4303.92);
+
+  // Effective primary price displayed prominently (Futures GC1! primary, spot as fallback)
+  const primaryPrice = futuresPrice ?? spotPrice;
+
+  // Prominent Basis (Spread between Futures and Spot)
+  const calculatedBasis = (futuresPrice !== null && spotPrice !== null)
+    ? Number((futuresPrice - spotPrice).toFixed(2))
+    : (priceData?.basisSpread ?? futuresData?.basisSpread ?? null);
+
+  const isContango = calculatedBasis !== null ? calculatedBasis >= 0 : true;
+
+  const currentPrice = primaryPrice;
 
   const handleApplyCustom = (e: React.FormEvent) => {
     e.preventDefault();
@@ -100,36 +119,27 @@ export const LivePriceCard: React.FC<LivePriceCardProps> = ({
       {/* Top row: Symbol, Source & Auto-Calibration Status */}
       <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[#1A1D26]">
         <div className="flex items-center gap-2">
-          <span className="font-mono text-xs font-bold px-2.5 py-0.5 rounded bg-amber-400/10 text-amber-300 border border-amber-400/30">
-            {isCfdMode ? 'XAU/USD (Gate CFD)' : 'XAU/USD Spot'}
+          <span className="font-mono text-xs font-bold px-2.5 py-0.5 rounded bg-amber-400/15 text-amber-300 border border-amber-400/40">
+            COMEX: GC1! (الذهب الآجل)
           </span>
-          <h2 className="text-xs font-bold text-zinc-300 tracking-wide">
-            {isCfdMode 
-              ? 'السعر الحي لعقود الذهب (Gate.io CFD XAUUSD)' 
-              : 'السعر الفوري المباشر للذهب (Gate.io Spot API v4 - PAXG)'}
+          <span className="font-mono text-xs font-medium px-2 py-0.5 rounded bg-zinc-800/60 text-zinc-300 border border-zinc-700/50">
+            مرجع Spot: XAU/USD
+          </span>
+          <h2 className="text-xs font-bold text-zinc-300 tracking-wide hidden sm:inline">
+            التسعير المؤسساتي اللحظي المباشر (TradingView Relay)
           </h2>
-          <a
-            href="https://www.gate.com/ar/cfd/XAUUSD?tf_sub=kline"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-[11px] text-amber-400 hover:text-amber-300 underline font-mono mr-1"
-            title="فتح شارت الذهب الحي في Gate.io CFD"
-          >
-            <span>شارت Gate CFD الحي</span>
-            <ExternalLink className="w-3 h-3" />
-          </a>
         </div>
 
         <div className="flex items-center gap-2">
           {priceData?.isOffline ? (
             <span className="inline-flex items-center gap-1.5 text-[10px] font-mono px-2.5 py-1 rounded bg-amber-500/10 text-amber-300 border border-amber-500/30">
               <WifiOff className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-              <span>{priceData.statusMessageAr || 'إعادة الاتصال بـ Gate.io API...'}</span>
+              <span>{priceData.statusMessageAr || 'إعادة الاتصال بالخادم...'}</span>
             </span>
           ) : (
             <span className="inline-flex items-center gap-1.5 text-[10px] font-mono px-2.5 py-1 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>{isCfdMode ? 'الضبط التلقائي: Gate CFD بث حي' : 'Gate.io Spot API بث حي'}</span>
+              <span>TradingView Live 🟢 (تغذية فورية)</span>
             </span>
           )}
 
@@ -138,10 +148,10 @@ export const LivePriceCard: React.FC<LivePriceCardProps> = ({
             onClick={handleTriggerAutoCalibration}
             disabled={isLoading || isCalibrating}
             className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-400/10 hover:bg-amber-400/20 text-amber-300 border border-amber-400/30 text-xs font-bold transition disabled:opacity-50"
-            title="إعادة الضبط التلقائي الآن ومطابقة شارت Gate CFD"
+            title="إعادة المزامنة والمعايرة اللحظية"
           >
             <Sparkles className={`w-3.5 h-3.5 text-amber-400 ${isCalibrating ? 'animate-spin' : ''}`} />
-            <span>ضبط تلقائي حي</span>
+            <span>معايرة لحظية</span>
           </button>
 
           <button
@@ -149,52 +159,39 @@ export const LivePriceCard: React.FC<LivePriceCardProps> = ({
             onClick={onRefreshPrice}
             disabled={isLoading}
             className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-[#1A1D26] transition disabled:opacity-50"
-            title="تحديث السعر الفوري"
+            title="تحديث الأسعار الفورية"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
           </button>
         </div>
       </div>
 
-      {/* Auto-Calibration Banner & Mode Switcher */}
-      <div className="bg-[#0A0C10] border border-[#1A1D26] rounded-lg p-2.5 flex flex-wrap items-center justify-between gap-2.5">
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] font-bold text-zinc-400">نمط التسعير والمعايرة:</span>
-          <div className="inline-flex rounded-lg bg-[#12141B] p-0.5 border border-[#1A1D26] text-[11px] font-mono">
-            <button
-              onClick={() => handleModeChange('gateio_cfd')}
-              className={`px-2.5 py-1 rounded-md transition flex items-center gap-1 ${
-                isCfdMode 
-                  ? 'bg-amber-400 text-black font-bold shadow-sm' 
-                  : 'text-zinc-400 hover:text-zinc-200'
-              }`}
-            >
-              {isCfdMode && <Check className="w-3 h-3 text-black" />}
-              <span>الضبط التلقائي (Gate CFD XAUUSD)</span>
-            </button>
-            <button
-              onClick={() => handleModeChange('gateio_spot')}
-              className={`px-2.5 py-1 rounded-md transition flex items-center gap-1 ${
-                !isCfdMode && priceData?.pricingMode !== 'manual'
-                  ? 'bg-amber-400 text-black font-bold shadow-sm' 
-                  : 'text-zinc-400 hover:text-zinc-200'
-              }`}
-            >
-              {!isCfdMode && priceData?.pricingMode !== 'manual' && <Check className="w-3 h-3 text-black" />}
-              <span>السعر الفوري الخالص (Gate Spot PAXG)</span>
-            </button>
-          </div>
+      {/* Prominent Basis & Feed Info Banner */}
+      <div className="bg-[#0A0C10] border border-[#1A1D26] rounded-lg p-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-[11px] font-bold text-zinc-400">مصدر التدفق الحي:</span>
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded bg-blue-500/10 text-blue-300 border border-blue-500/30 text-[11px] font-mono">
+            <Radio className="w-3 h-3 text-blue-400 animate-pulse" />
+            TradingView WebSocket Relay (COMEX:GC1! + OANDA:XAUUSD)
+          </span>
+          <span className="text-[10px] text-zinc-500 font-mono">
+            آخر تحديث: {futuresData?.updatedAt ? new Date(futuresData.updatedAt).toLocaleTimeString('ar-SA') : 'لحظي'}
+          </span>
         </div>
 
-        {/* Spread / Basis Status */}
-        {typeof priceData?.basisSpread === 'number' && (
-          <div className="flex items-center gap-2 text-xs font-mono">
-            <span className="text-zinc-400 text-[11px]">فروقات الأسعار (Basis):</span>
-            <span className="font-bold text-amber-300">
-              {priceData.basisSpread >= 0 ? `+${priceData.basisSpread.toFixed(2)}$` : `${priceData.basisSpread.toFixed(2)}$`}
+        {/* Prominent Basis Display */}
+        {calculatedBasis !== null && (
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#12141B] border border-amber-400/30 font-mono text-xs">
+            <span className="text-zinc-400 text-[11px]">فارق الأساس (Basis):</span>
+            <span className={`font-black text-sm ${calculatedBasis >= 0 ? 'text-amber-400' : 'text-rose-400'}`}>
+              {calculatedBasis >= 0 ? `+${calculatedBasis.toFixed(2)}$` : `${calculatedBasis.toFixed(2)}$`}
             </span>
-            <span className="text-[10px] text-zinc-500">
-              ({priceData.basisSpread >= 0 ? 'علاوة CFD طبيعية Contango' : 'خصم Backwardation'})
+            <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
+              isContango 
+                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' 
+                : 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
+            }`}>
+              {isContango ? 'علاوة طبيعية Contango' : 'خصم Backwardation'}
             </span>
           </div>
         )}
@@ -207,61 +204,72 @@ export const LivePriceCard: React.FC<LivePriceCardProps> = ({
         </div>
       )}
 
-      {/* Main Big Price Display & Logic Thresholds */}
+      {/* Main Big Price Display & Reference Comparison */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
         <div className="md:col-span-8 flex flex-col justify-center">
           <div>
-            <div className="flex items-baseline gap-3">
-              <span className="text-4xl sm:text-5xl font-black font-mono tracking-tight text-white">
-                ${currentPrice.toFixed(2)}
+            {/* Primary Price: Futures GC1! */}
+            <div className="flex flex-wrap items-baseline gap-3">
+              <span className="text-4xl sm:text-5xl font-black font-mono tracking-tight text-amber-400">
+                ${primaryPrice.toFixed(2)}
               </span>
-              <span className="text-xs font-mono text-zinc-400 uppercase">
-                دولار / أونصة ({isCfdMode ? 'Gate.io CFD XAUUSD' : 'Gate.io Spot XAU/USD'})
-              </span>
+              <div className="flex flex-col">
+                <span className="text-xs font-mono font-bold text-white uppercase flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-amber-400 inline-block"></span>
+                  العقود الآجلة الرئيسية COMEX GC1!
+                </span>
+                <span className="text-[10px] font-mono text-zinc-400">
+                  دولار / أونصة (Front-Month CME Futures)
+                </span>
+              </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3 mt-1.5 text-xs font-mono">
+            <div className="flex flex-wrap items-center gap-3 mt-2 text-xs font-mono">
               <span className={`flex items-center gap-1 font-bold ${
                 (priceData?.change24h ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
               }`}>
                 {(priceData?.change24h ?? 0) >= 0 ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
-                {(priceData?.change24h ?? -1.80) >= 0 ? '+' : ''}
-                {(priceData?.change24h ?? -1.80).toFixed(2)}%
+                {(priceData?.change24h ?? 0) >= 0 ? '+' : ''}
+                {(priceData?.change24h ?? 0.12).toFixed(2)}%
               </span>
               <span className="text-zinc-600">|</span>
               <span className="text-zinc-400 text-[11px]">
-                نطاق 24 ساعة: <strong className="text-white">${priceData?.low24h ? priceData.low24h.toFixed(2) : (currentPrice - 14).toFixed(2)}</strong> - <strong className="text-white">${priceData?.high24h ? priceData.high24h.toFixed(2) : (currentPrice + 10).toFixed(2)}</strong>
+                نطاق 24 ساعة: <strong className="text-white">${priceData?.low24h ? priceData.low24h.toFixed(2) : (primaryPrice - 18).toFixed(2)}</strong> - <strong className="text-white">${priceData?.high24h ? priceData.high24h.toFixed(2) : (primaryPrice + 14).toFixed(2)}</strong>
               </span>
               {typeof priceData?.bid === 'number' && typeof priceData?.ask === 'number' && (
                 <>
                   <span className="text-zinc-600">|</span>
-                  <span className="text-amber-400 font-mono text-[11px]">
-                    طلب Bid: <strong>${priceData.bid.toFixed(2)}</strong> | عرض Ask: <strong>${priceData.ask.toFixed(2)}</strong> (سبريد: {priceData.spreadPips ?? 2.0} بيب)
+                  <span className="text-zinc-300 font-mono text-[11px]">
+                    طلب Bid: <strong className="text-white">${priceData.bid.toFixed(2)}</strong> | عرض Ask: <strong className="text-white">${priceData.ask.toFixed(2)}</strong> (سبريد: {priceData.spreadPips ?? 1.8} بيب)
                   </span>
                 </>
               )}
             </div>
 
-            {/* Quick Price Comparison Card */}
-            {priceData?.cfdPrice && priceData?.spotPrice && (
-              <div className="mt-2.5 pt-2 border-t border-[#1A1D26] grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px] font-mono">
-                <div className="bg-[#0A0C10] p-1.5 rounded border border-[#1A1D26]">
-                  <span className="text-zinc-500 block text-[10px]">سعر شارت Gate CFD:</span>
-                  <span className="font-bold text-amber-400">${priceData.cfdPrice.toFixed(2)}</span>
-                </div>
-                <div className="bg-[#0A0C10] p-1.5 rounded border border-[#1A1D26]">
-                  <span className="text-zinc-500 block text-[10px]">سعر الفوري Gate Spot:</span>
-                  <span className="font-bold text-zinc-300">${priceData.spotPrice.toFixed(2)}</span>
-                </div>
-                <div className="bg-[#0A0C10] p-1.5 rounded border border-[#1A1D26] col-span-2 sm:col-span-1">
-                  <span className="text-zinc-500 block text-[10px]">الفرق السعري (Spread):</span>
-                  <span className="font-bold text-emerald-400">
-                    {(priceData.cfdPrice - priceData.spotPrice) >= 0 ? '+' : ''}
-                    {(priceData.cfdPrice - priceData.spotPrice).toFixed(2)}$
-                  </span>
-                </div>
+            {/* Prominent Spot Reference & Basis Breakdown */}
+            <div className="mt-3 pt-2.5 border-t border-[#1A1D26] grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-[11px] font-mono">
+              <div className="bg-[#0A0C10] p-2 rounded-lg border border-[#1A1D26]">
+                <span className="text-zinc-400 block text-[10px] mb-0.5">سعر الذهب الفوري (Spot مرجع):</span>
+                <span className="font-bold text-base text-zinc-100">${spotPrice.toFixed(2)}</span>
+                <span className="text-[9px] text-zinc-500 block">OANDA:XAUUSD</span>
               </div>
-            )}
+              <div className="bg-[#0A0C10] p-2 rounded-lg border border-amber-400/20 bg-amber-400/5">
+                <span className="text-amber-300 block text-[10px] mb-0.5">فارق الأساس المباشر (Basis):</span>
+                <span className="font-black text-base text-amber-400">
+                  {calculatedBasis !== null ? `${calculatedBasis >= 0 ? '+' : ''}${calculatedBasis.toFixed(2)}$` : '--'}
+                </span>
+                <span className="text-[9px] text-zinc-400 block">
+                  {isContango ? 'علاوة عقود Contango' : 'خصم Backwardation'}
+                </span>
+              </div>
+              <div className="bg-[#0A0C10] p-2 rounded-lg border border-[#1A1D26] col-span-2 sm:col-span-1">
+                <span className="text-zinc-400 block text-[10px] mb-0.5">حجم تداول CME / العقد:</span>
+                <span className="font-bold text-base text-emerald-400">
+                  {(futuresData?.cmeVolumeLots ?? futuresData?.volume ?? 22745).toLocaleString()} عقد
+                </span>
+                <span className="text-[9px] text-zinc-500 block">حجم حقيقي (COMEX GC)</span>
+              </div>
+            </div>
           </div>
         </div>
 

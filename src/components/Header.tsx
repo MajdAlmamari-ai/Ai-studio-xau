@@ -193,48 +193,53 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Telemetry & Quick Action Bar */}
           <div className="flex items-center flex-wrap gap-2 sm:gap-3 text-xs">
-            {/* Gate.io Spot Source Badge */}
-            <div className="flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/30 px-2.5 py-1 rounded-lg text-[11px] font-mono text-amber-300">
-              <Globe className="w-3.5 h-3.5 text-amber-400" />
-              <span>Gate.io Spot API v4 🟢</span>
+            {/* TradingView Institutional Source Badge */}
+            <div className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-1 rounded-lg text-[11px] font-mono text-emerald-300">
+              <Globe className="w-3.5 h-3.5 text-emerald-400" />
+              <span>TradingView Relay 🟢</span>
             </div>
 
-            {/* Spot / CFD Price */}
-            <div className="flex items-center gap-1.5 bg-[#12141B] border border-[#1A1D26] px-2.5 py-1 rounded-lg">
-              <span className="text-[10px] text-zinc-400">
-                {priceData?.source === 'gateio_cfd' ? 'سعر الذهب (Gate CFD):' : 'الفوري (Spot):'}
-              </span>
-              {priceData && priceData.price !== null ? (
-                <span className="font-mono font-bold text-amber-400 text-xs sm:text-sm">
-                  ${priceData.price.toFixed(2)}
-                </span>
-              ) : (
-                <span className="font-mono font-bold text-amber-400 text-xs sm:text-sm animate-pulse">
-                  $4,337.53
-                </span>
-              )}
-              {priceData?.autoCalibrated && (
-                <span className="text-[9px] font-mono px-1 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hidden sm:inline">
-                  مضبوط تلقائياً ⚡
-                </span>
-              )}
-            </div>
-
-            {/* Futures Price */}
+            {/* Futures Price GC1! (Primary Institutional) */}
             <div className="flex items-center gap-1.5 bg-[#12141B] border border-[#1A1D26] px-2.5 py-1 rounded-lg">
               <span className="text-[10px] text-zinc-400 flex items-center gap-1">
-                <Layers className="w-3 h-3 text-amber-400" /> الآجل / CFD:
+                <Layers className="w-3 h-3 text-amber-400" /> COMEX GC1!:
               </span>
               {futuresData && futuresData.futuresPrice !== null ? (
                 <span className="font-mono font-bold text-amber-300 text-xs sm:text-sm">
                   ${futuresData.futuresPrice.toFixed(2)}
                 </span>
               ) : (
-                <span className="font-mono font-bold text-amber-300 text-xs sm:text-sm">
-                  $4,338.84
+                <span className="font-mono font-bold text-amber-300 text-xs sm:text-sm animate-pulse">
+                  $4,331.50
                 </span>
               )}
             </div>
+
+            {/* Spot Price (Reference) */}
+            <div className="flex items-center gap-1.5 bg-[#12141B] border border-[#1A1D26] px-2.5 py-1 rounded-lg">
+              <span className="text-[10px] text-zinc-400">
+                الفوري (Spot XAU):
+              </span>
+              {priceData && priceData.price !== null ? (
+                <span className="font-mono font-bold text-white text-xs sm:text-sm">
+                  ${priceData.price.toFixed(2)}
+                </span>
+              ) : (
+                <span className="font-mono font-bold text-white text-xs sm:text-sm animate-pulse">
+                  $4,303.90
+                </span>
+              )}
+            </div>
+
+            {/* Basis Spread */}
+            {futuresData && typeof futuresData.basisSpread === 'number' && (
+              <div className="hidden sm:flex items-center gap-1.5 bg-[#12141B] border border-[#1A1D26] px-2.5 py-1 rounded-lg font-mono">
+                <span className="text-[10px] text-zinc-400">Basis:</span>
+                <span className="font-bold text-xs text-amber-400">
+                  {futuresData.basisSpread >= 0 ? `+${futuresData.basisSpread.toFixed(2)}$` : `${futuresData.basisSpread.toFixed(2)}$`}
+                </span>
+              </div>
+            )}
 
             {/* Cron Timer */}
             <div className="hidden sm:flex items-center gap-1.5 bg-[#12141B] border border-[#1A1D26] px-2.5 py-1 rounded-lg font-mono">

@@ -106,6 +106,7 @@ export const TabContentRenderer: React.FC<TabContentRendererProps> = ({
             <div className="lg:col-span-7 xl:col-span-8">
               <LivePriceCard
                 priceData={priceData}
+                futuresData={futuresData}
                 onRefreshPrice={loadMarketData}
                 isLoading={isLoadingPrice}
                 onSetCustomPrice={onSetCustomPrice}

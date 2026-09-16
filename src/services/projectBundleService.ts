@@ -1,6 +1,6 @@
-import { ProjectSourceBundle } from '../../server/projectBundleService';
+import type { ProjectSourceBundle, ProjectSourceFile } from '../types/sharedTypes';
 
-export type { ProjectSourceBundle, ProjectSourceFile } from '../../server/projectBundleService';
+export type { ProjectSourceBundle, ProjectSourceFile };
 
 /**
  * Fetch the complete project source bundle (all source files, no truncation)

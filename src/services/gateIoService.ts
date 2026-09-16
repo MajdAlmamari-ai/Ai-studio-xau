@@ -1,4 +1,4 @@
-import { 
+import type { 
   GateIoMarketOverview, 
   GateIoSpotMasterOverview,
   GateIoSpotTradeFlow,
@@ -6,7 +6,7 @@ import {
   GateIoFuturesTicker, 
   NormalizedCandle, 
   GateIoOrderBookData 
-} from '../../server/gateIoService';
+} from '../types/sharedTypes';
 
 export type { 
   GateIoMarketOverview, 

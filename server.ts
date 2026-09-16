@@ -51,13 +51,16 @@ import {
   fetchGateIoFuturesTicker, 
   fetchGateIoCandlesticks, 
   fetchGateIoOrderBook,
-  fetchGateIoSpotTrades
+  fetchGateIoSpotTrades,
+  fetchGateIoFuturesTrades
 } from './server/gateIoService';
 import { priceVolumeEngine } from './server/priceVolumeEngine';
 import { getCloudGoldState, setManualPrice, syncCloudGoldData } from './server/cloudHttpGoldEngine';
 import { getCandlesForTimeframe, ChartTimeframe } from './server/candlesService';
 import { calculateMultiTimeframeSMC } from './server/multiTimeframeEngine';
 import { logger } from './server/loggerService';
+import { tvRouter } from './server/tvRouter';
+import { getTvRelay } from './server/tvRelay';
 
 dotenv.config();
 
@@ -108,6 +111,9 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date().toISOString(),
   });
 });
+
+// TradingView Relay REST Endpoints
+app.use('/api/tv', tvRouter);
 
 // 1. Live Gold Spot & Futures Pricing
 app.get(['/api/price', '/api/gold/spot'], async (req, res) => {
@@ -618,6 +624,19 @@ app.get('/api/gateio/spot/trades', async (req, res) => {
   }
 });
 
+// Live Futures Trades & Cumulative Volume Delta (CVD) for XAU_USDT
+app.get('/api/gateio/futures/trades', async (req, res) => {
+  try {
+    const contract = (req.query.contract as string) || 'XAU_USDT';
+    const limit = parseInt(req.query.limit as string, 10) || 100;
+    const trades = await fetchGateIoFuturesTrades(contract, limit);
+    res.json(trades);
+  } catch (err: any) {
+    console.error('[Gate.io Futures Trades Error]:', err);
+    res.status(500).json({ error: 'Failed to fetch Gate.io futures trades', message: err.message });
+  }
+});
+
 // Live Consolidated Overview (Spot + Futures + Spread)
 app.get('/api/gateio/overview', async (req, res) => {
   try {
@@ -882,7 +901,9 @@ app.get('/api/system/status', (req, res) => {
     version: '2.4.0',
     serverUptimeSeconds: Math.round(process.uptime()),
     nodeVersion: process.version,
-    memoryUsageMb: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+    memoryUsageMb: typeof process !== 'undefined' && typeof process.memoryUsage === 'function'
+      ? Math.round(process.memoryUsage().heapUsed / 1024 / 1024)
+      : 32,
     goldFeeds: {
       spotPrice: getCachedSpotPrice(),
       source: 'gold-api.com + CME GC Futures Real-Time Engine',
@@ -968,6 +989,15 @@ process.on('unhandledRejection', (reason: any) => {
 async function startServer() {
   // Start the background 15-minute institutional scheduler
   startServerScheduler();
+
+  // Start the persistent TradingView Relay WebSocket
+  try {
+    const tvRelay = getTvRelay();
+    tvRelay.start();
+    logger.info('WEBSOCKET', 'TradingView WebSocket Relay started');
+  } catch (err: any) {
+    logger.error('WEBSOCKET', `Failed to start TV Relay: ${err?.message || err}`);
+  }
 
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({

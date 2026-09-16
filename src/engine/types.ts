@@ -3,7 +3,7 @@
  * Internal to the engine. May be mapped to src/types.ts.
  */
 
-import { NormalizedCandle } from '../../server/gateIoService';
+import type { NormalizedCandle } from '../types/sharedTypes';
 
 export type { NormalizedCandle };
 

@@ -1,5 +1,5 @@
 import { OrderFlowVolumeData } from '../types';
-import { fetchGateIoFuturesTrades } from '../../server/gateIoService';
+import type { GateIoSpotTradeFlow } from '../types/sharedTypes';
 
 export interface OrderFlowResult {
   ok: boolean;
@@ -21,7 +21,11 @@ export interface OrderFlowResult {
 
 export async function fetchRealOrderFlow(): Promise<OrderFlowResult> {
   try {
-    const flow = await fetchGateIoFuturesTrades('XAU_USDT', 100);
+    const res = await fetch('/api/gateio/futures/trades?contract=XAU_USDT&limit=100');
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    }
+    const flow: GateIoSpotTradeFlow = await res.json();
 
     const cvd = flow.cumulativeDelta;
     let deltaBias: OrderFlowResult['deltaBias'] = 'NEUTRAL';

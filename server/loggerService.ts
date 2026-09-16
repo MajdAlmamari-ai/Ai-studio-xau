@@ -121,7 +121,9 @@ class LoggerService {
     details?: Record<string, any>,
     durationMs?: number
   ): LogEntry {
-    const mem = process.memoryUsage();
+    const mem = typeof process !== 'undefined' && typeof process.memoryUsage === 'function'
+      ? process.memoryUsage()
+      : { heapUsed: 0, heapTotal: 0, rss: 0, external: 0, arrayBuffers: 0 };
     const heapUsedMb = parseFloat((mem.heapUsed / (1024 * 1024)).toFixed(2));
 
     const entry: LogEntry = {
@@ -233,7 +235,9 @@ class LoggerService {
   // Generate system performance metrics
   public getMetrics(): SystemPerformanceMetrics {
     const uptimeSec = Math.floor((Date.now() - this.startTime) / 1000);
-    const mem = process.memoryUsage();
+    const mem = typeof process !== 'undefined' && typeof process.memoryUsage === 'function'
+      ? process.memoryUsage()
+      : { heapUsed: 0, heapTotal: 0, rss: 0, external: 0, arrayBuffers: 0 };
 
     const rssMb = parseFloat((mem.rss / (1024 * 1024)).toFixed(2));
     const heapTotalMb = parseFloat((mem.heapTotal / (1024 * 1024)).toFixed(2));

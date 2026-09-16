@@ -11,6 +11,7 @@ import {
   setAutoCalibratePricingMode 
 } from '../services/goldApiService';
 import { fetchGoldApiSpot } from '../services/goldApiClient';
+import { fetchTvQuote } from '../services/tvApiClient';
 import { fetchLiveGoldFutures, getGoldFuturesData } from '../services/futuresService';
 import { fetchLiveEconomicNews, GOLD_ECONOMIC_NEWS } from '../services/newsService';
 import { fetchScenarioProjections, calculateScenarioProjections } from '../services/scenarioService';
@@ -54,7 +55,23 @@ export function useMarketData(currentBias: 'BULLISH' | 'BEARISH' | 'NEUTRAL') {
     ask: number | null;
     quality: 'REAL' | 'FALLBACK';
   } | null> {
-    // Attempt 1: Gold-API
+    // Attempt 1: TradingView Relay (Primary live feed via /api/tv/quote/spot)
+    try {
+      const tvResult = await fetchTvQuote('spot');
+      if (tvResult.ok && tvResult.data.price > 0) {
+        return {
+          price: tvResult.data.price,
+          source: 'tradingview',
+          bid: tvResult.data.bid ?? null,
+          ask: tvResult.data.ask ?? null,
+          quality: 'REAL',
+        };
+      }
+    } catch (err) {
+      console.warn('[useMarketData] TradingView relay failed:', err);
+    }
+
+    // Attempt 2: Gold-API (Direct spot)
     try {
       const goldResult = await fetchGoldApiSpot();
       if (goldResult.ok) {
@@ -72,7 +89,7 @@ export function useMarketData(currentBias: 'BULLISH' | 'BEARISH' | 'NEUTRAL') {
       console.warn('[useMarketData] Gold-API threw:', err);
     }
 
-    // Attempt 2: Cloud Engine (existing)
+    // Attempt 3: Cloud Engine (Fallback)
     try {
       const cloudResult = await fetchGoldPriceWithStatus(
         lastKnownPriceRef.current,
@@ -135,7 +152,9 @@ export function useMarketData(currentBias: 'BULLISH' | 'BEARISH' | 'NEUTRAL') {
           ask: chainResult.ask,
           spreadPoints: chainResult.bid && chainResult.ask ? Math.round((chainResult.ask - chainResult.bid) * 100) : null,
           spreadPips: chainResult.bid && chainResult.ask ? Number(((chainResult.ask - chainResult.bid) * 10).toFixed(1)) : null,
-          statusMessageAr: chainResult.quality === 'REAL'
+          statusMessageAr: chainResult.source === 'tradingview'
+            ? 'تغذية لحظية مباشرة وفائقة الدقة من شبكة TradingView المؤسساتية (XAU/USD Spot)'
+            : chainResult.quality === 'REAL'
             ? 'تغذية سحابية مباشرة ونشطة من Gold-API.com (XAU/USD Spot)'
             : `تغذية احتياطية نشطة (${chainResult.source})`,
         };
