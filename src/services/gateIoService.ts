@@ -18,15 +18,46 @@ export type {
   GateIoOrderBookData 
 };
 
+let cachedClientOverview: GateIoMarketOverview | null = null;
+const cachedCandlesMap: Record<string, NormalizedCandle[]> = {};
+
 /**
  * Fetch Consolidated Gate.io Market Overview (Spot PAXG + Futures XAU + Spread & Depth)
+ * Resilient against temporary offline / network hiccup / server restart.
  */
 export async function fetchGateIoOverview(force = false): Promise<GateIoMarketOverview> {
-  const res = await fetch(`/api/gateio/overview${force ? '?force=true' : ''}`);
-  if (!res.ok) {
-    throw new Error(`Gate.io Overview failed: ${res.statusText}`);
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
+    const res = await fetch(`/api/gateio/overview${force ? '?force=true' : ''}`, {
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.spot && data.futures && data.orderBook) {
+        cachedClientOverview = data;
+        return data;
+      }
+    }
+  } catch (_err) {
+    // Transient network abort or server restarting
   }
-  return res.json();
+
+  if (cachedClientOverview) {
+    return cachedClientOverview;
+  }
+
+  throw Object.assign(
+    new Error('GATEIO_UNAVAILABLE: Gate.io is not the primary source. Use TradingView /api/tv/* endpoints instead.'),
+    {
+      code: 'GATEIO_UNAVAILABLE',
+      shortAr: 'Gate.io غير متاح',
+      detailsAr: 'Gate.io ليس المصدر الأساسي. استخدم TradingView.',
+      howToFix: ['تحقق من TradingView relay', 'أعد المحاولة'],
+    },
+  );
 }
 
 /**
@@ -62,12 +93,27 @@ export async function fetchGateIoCandlesticksClient(
   interval: string = '1h',
   limit: number = 60
 ): Promise<NormalizedCandle[]> {
-  const res = await fetch(`/api/gateio/candlesticks?market=${market}&interval=${interval}&limit=${limit}`);
-  if (!res.ok) {
-    throw new Error(`Gate.io Candlesticks failed: ${res.statusText}`);
+  const cacheKey = `${market}_${interval}`;
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
+    const res = await fetch(`/api/gateio/candlesticks?market=${market}&interval=${interval}&limit=${limit}`, {
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data && Array.isArray(data.candles) && data.candles.length > 0) {
+        cachedCandlesMap[cacheKey] = data.candles;
+        return data.candles;
+      }
+    }
+  } catch (_err) {
+    // Transient network abort or server restarting
   }
-  const data = await res.json();
-  return data.candles || [];
+
+  return cachedCandlesMap[cacheKey] || [];
 }
 
 export const fetchGateIoCandlesticks = fetchGateIoCandlesticksClient;

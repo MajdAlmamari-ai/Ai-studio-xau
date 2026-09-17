@@ -22,7 +22,6 @@ import { PriceVolumeEngineCard } from './PriceVolumeEngineCard';
 import { CloudMarketSyncCard } from './CloudMarketSyncCard';
 import { CandlestickChartCard } from './CandlestickChartCard';
 import { MultiTimeframeSMCCard } from './MultiTimeframeSMCCard';
-import { GateIoMarketCard } from './GateIoMarketCard';
 import { SystemDiagnosticsCard } from './SystemDiagnosticsCard';
 import { Globe } from 'lucide-react';
 
@@ -120,7 +119,6 @@ export const TabContentRenderer: React.FC<TabContentRendererProps> = ({
                 futuresData={futuresData} 
                 spotPrice={currentPrice}
                 onRefresh={loadMarketData} 
-                onOpenGateIo={() => setActiveTab('gateio')}
               />
             </div>
           </div>
@@ -145,15 +143,6 @@ export const TabContentRenderer: React.FC<TabContentRendererProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
-              <button
-                id="terminal-open-gateio-btn"
-                onClick={() => setActiveTab('gateio')}
-                className="px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap shadow-sm"
-              >
-                <Globe className="w-3.5 h-3.5 text-amber-400" />
-                <span>بوابة Gate.io (Spot & Futures) ⚡</span>
-              </button>
-
               <button
                 id="terminal-open-charts-btn"
                 onClick={() => setActiveTab('charts')}
@@ -189,15 +178,6 @@ export const TabContentRenderer: React.FC<TabContentRendererProps> = ({
             isTriggering={isTriggering}
             onTriggerCycle={runExecutionCycle}
             nextCycleSeconds={nextCycleSeconds}
-          />
-        </div>
-      );
-
-    case 'gateio':
-      return (
-        <div className="space-y-4">
-          <GateIoMarketCard
-            onApplyPrice={(price) => onSetCustomPrice(price, 'Gate.io Live Feed')}
           />
         </div>
       );

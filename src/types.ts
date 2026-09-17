@@ -115,8 +115,6 @@ export interface WickFilterMetrics {
 }
 
 export interface SMCConfig {
-  bullishThreshold: number;
-  bearishThreshold: number;
   bslOffset: number;
   sslOffset: number;
   resistanceOffset: number;
@@ -471,7 +469,16 @@ export interface MT5SyncState {
   statusMessageAr: string;
 }
 
-export type ChartTimeframe = '4H' | '1D' | '1W' | '1M';
+export type ChartTimeframe =
+  | '1m'
+  | '5m'
+  | '15m'
+  | '30m'
+  | '1h'
+  | '4h'
+  | '1d'
+  | '1w'
+  | '1M';
 
 export interface CandleData {
   time: number; // Unix timestamp in seconds

@@ -76,11 +76,10 @@ export const LivePriceCard: React.FC<LivePriceCardProps> = ({
 
   const handleCalibrateToCurrent = () => {
     if (currentPrice !== null) {
-      const base = Math.round(currentPrice);
       onUpdateConfig({
         ...config,
-        bullishThreshold: base + 5,
-        bearishThreshold: base - 5,
+        bslOffset: 8,
+        sslOffset: 6,
       });
     }
   };
@@ -283,18 +282,18 @@ export const LivePriceCard: React.FC<LivePriceCardProps> = ({
               className="text-[10px] text-amber-400 hover:text-amber-300 flex items-center gap-1"
             >
               <Settings2 className="w-3 h-3" />
-              <span>{showConfig ? 'إخفاء الإعدادات' : 'تعديل الحدود'}</span>
+              <span>{showConfig ? 'إخفاء الإعدادات' : 'إعدادات الإزاحة'}</span>
             </button>
           </div>
 
           <div className="space-y-1.5 font-mono text-[11px]">
             <div className="flex justify-between items-center bg-[#12141B] px-2 py-1 rounded">
-              <span className="text-emerald-400">حد الشراء الصاعد:</span>
-              <span className="font-bold text-white">${config.bullishThreshold.toFixed(2)}</span>
+              <span className="text-emerald-400">إزاحة سيولة الشراء BSL:</span>
+              <span className="font-bold text-white">+{config.bslOffset.toFixed(1)}$</span>
             </div>
             <div className="flex justify-between items-center bg-[#12141B] px-2 py-1 rounded">
-              <span className="text-rose-400">حد البيع الهابط:</span>
-              <span className="font-bold text-white">${config.bearishThreshold.toFixed(2)}</span>
+              <span className="text-rose-400">إزاحة سيولة البيع SSL:</span>
+              <span className="font-bold text-white">-{config.sslOffset.toFixed(1)}$</span>
             </div>
           </div>
         </div>
@@ -319,24 +318,6 @@ export const LivePriceCard: React.FC<LivePriceCardProps> = ({
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
-            <div className="bg-[#12141B] p-2 rounded border border-[#1A1D26]">
-              <label className="block text-[10px] text-zinc-400 mb-1">حد الشراء الصاعد ($)</label>
-              <input
-                type="number"
-                value={config.bullishThreshold}
-                onChange={(e) => onUpdateConfig({ ...config, bullishThreshold: parseFloat(e.target.value) || 4345 })}
-                className="w-full bg-[#0A0C10] border border-zinc-700 rounded px-2 py-1 text-white font-mono text-xs focus:outline-none focus:border-amber-400"
-              />
-            </div>
-            <div className="bg-[#12141B] p-2 rounded border border-[#1A1D26]">
-              <label className="block text-[10px] text-zinc-400 mb-1">حد البيع الهابط ($)</label>
-              <input
-                type="number"
-                value={config.bearishThreshold}
-                onChange={(e) => onUpdateConfig({ ...config, bearishThreshold: parseFloat(e.target.value) || 4330 })}
-                className="w-full bg-[#0A0C10] border border-zinc-700 rounded px-2 py-1 text-white font-mono text-xs focus:outline-none focus:border-amber-400"
-              />
-            </div>
             <div className="bg-[#12141B] p-2 rounded border border-[#1A1D26]">
               <label className="block text-[10px] text-zinc-400 mb-1">إزاحة سيولة الشراء BSL (+P)</label>
               <input
@@ -384,38 +365,47 @@ export const LivePriceCard: React.FC<LivePriceCardProps> = ({
 
           <button
             id="scenario-bullish-btn"
-            onClick={() => onSetCustomPrice(config.bullishThreshold + 3.5, `سيناريو صاعد (> ${config.bullishThreshold})`)}
+            onClick={() => {
+              const base = currentPrice ?? 4330;
+              onSetCustomPrice(base + 10, `سيناريو صاعد (> ${(base + 5).toFixed(1)})`);
+            }}
             className={`px-2.5 py-1.5 rounded-lg text-[11px] border transition text-center ${
               activeScenario.includes('صاعد') || activeScenario.includes('Bullish')
                 ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400 font-bold'
                 : 'bg-[#0A0C10] border-[#1A1D26] text-zinc-300 hover:bg-[#1A1D26]'
             }`}
           >
-            ● سيناريو صاعد (${(config.bullishThreshold + 3.5).toFixed(1)})
+            ● سيناريو صاعد (${((currentPrice ?? 4330) + 10).toFixed(1)})
           </button>
 
           <button
             id="scenario-bearish-btn"
-            onClick={() => onSetCustomPrice(config.bearishThreshold - 4.5, `سيناريو هابط (< ${config.bearishThreshold})`)}
+            onClick={() => {
+              const base = currentPrice ?? 4330;
+              onSetCustomPrice(base - 10, `سيناريو هابط (< ${(base - 5).toFixed(1)})`);
+            }}
             className={`px-2.5 py-1.5 rounded-lg text-[11px] border transition text-center ${
               activeScenario.includes('هابط') || activeScenario.includes('Bearish')
                 ? 'bg-rose-500/10 border-rose-500 text-rose-400 font-bold'
                 : 'bg-[#0A0C10] border-[#1A1D26] text-zinc-300 hover:bg-[#1A1D26]'
             }`}
           >
-            ● سيناريو هابط (${(config.bearishThreshold - 4.5).toFixed(1)})
+            ● سيناريو هابط (${((currentPrice ?? 4330) - 10).toFixed(1)})
           </button>
 
           <button
             id="scenario-neutral-btn"
-            onClick={() => onSetCustomPrice((config.bullishThreshold + config.bearishThreshold) / 2, 'نطاق تجميعي (انتظار)')}
+            onClick={() => {
+              const base = currentPrice ?? 4330;
+              onSetCustomPrice(base, 'نطاق تجميعي (انتظار)');
+            }}
             className={`px-2.5 py-1.5 rounded-lg text-[11px] border transition text-center ${
               activeScenario.includes('تجميعي') || activeScenario.includes('Consolidation')
                 ? 'bg-amber-400/10 border-amber-400 text-amber-300 font-bold'
                 : 'bg-[#0A0C10] border-[#1A1D26] text-zinc-300 hover:bg-[#1A1D26]'
             }`}
           >
-            ● تذبذب وانتظار (${((config.bullishThreshold + config.bearishThreshold) / 2).toFixed(1)})
+            ● تذبذب وانتظار (${(currentPrice ?? 4330).toFixed(1)})
           </button>
 
           <form onSubmit={handleApplyCustom} className="flex gap-1">

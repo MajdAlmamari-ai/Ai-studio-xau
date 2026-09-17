@@ -18,7 +18,9 @@ import {
   Info
 } from 'lucide-react';
 import { ChartTimeframe, CandleData, CandleResponseData, MultiTimeframeSummary } from '../types';
+import { Candle } from '../types/sharedTypes';
 import { fetchCandlesData } from '../services/candlesService';
+import { fetchTvHistory } from '../services/tvHistoryClient';
 
 interface CandlestickChartCardProps {
   currentPrice: number;
@@ -33,41 +35,241 @@ const TIMEFRAMES: Array<{
   badgeAr: string;
 }> = [
   {
-    id: '4H',
-    labelAr: 'شمعة 4 ساعات (4H)',
-    subLabelAr: 'نطاق المتداول اليومي وسوينج الأوردر بلوك',
-    descriptionAr: 'الفريم الأقوى لتأكيد كتل الأوامر اللحظية (Order Blocks) ومناطق الكسر الحقيقي لهيكل السوق (BOS).',
-    badgeAr: 'سعر لحظي ⚡',
+    id: '1m',
+    labelAr: '1 دقيقة (1m)',
+    subLabelAr: 'دخول قناص دقيق وسحب سيولة لحظي',
+    descriptionAr: 'فريم التنفيذ الميكرو لرصد سحب السيولة اللحظية وتدفق الأوامر في أجزاء الدقيقة.',
+    badgeAr: 'سكالبينج ⚡',
   },
   {
-    id: '1D',
-    labelAr: 'شمعة اليوم (1D Daily)',
-    subLabelAr: 'الاتجاه الهيكلي ومستويات الفاليو إريا اليومية',
-    descriptionAr: 'يحدد الاتجاه المؤسساتي العام لجلسات لندن ونيويورك ومستويات السيولة الصباحية والمسائية.',
-    badgeAr: 'هيكل رئيسي 🏛️',
+    id: '5m',
+    labelAr: '5 دقائق (5m)',
+    subLabelAr: 'تأكيد كسر الهيكل وتدفق الأوامر اللحظي',
+    descriptionAr: 'الفريم الأنسب للتنفيذ اليومي وتأكيد كسر الهيكل الداخلي وتغير الشخصية (CHoCH).',
+    badgeAr: 'دخول سريع 🎯',
   },
   {
-    id: '1W',
-    labelAr: 'شمعة الأسبوع (1W Weekly)',
+    id: '15m',
+    labelAr: '15 دقيقة (15m)',
+    subLabelAr: 'هيكل السوق اللحظي وقاعدة الأخبار',
+    descriptionAr: 'الفريم المؤسساتي لرصد سحب سيولة ما بعد الأخبار وفجوات القيمة العادلة (FVG).',
+    badgeAr: 'هيكل لحظي ⏱️',
+  },
+  {
+    id: '30m',
+    labelAr: '30 دقيقة (30m)',
+    subLabelAr: 'توازن الجلسات وسيولة الفترات',
+    descriptionAr: 'يحدد مستويات توازن جلسات لندن ونيويورك وتجمعات أوامر البنوك وصناع السوق.',
+    badgeAr: 'جلسات 🏛️',
+  },
+  {
+    id: '1h',
+    labelAr: '1 ساعة (1h)',
+    subLabelAr: 'النطاق اليومي ومناطق الانضغاط',
+    descriptionAr: 'تأكيد مناطق الدعم والمقاومة المؤسساتية وكتل الأوامر القوية (Order Blocks).',
+    badgeAr: 'سوينج لحظي 📈',
+  },
+  {
+    id: '4h',
+    labelAr: '4 ساعات (4h)',
+    subLabelAr: 'الاتجاه الهيكلي اليومي والأسبوعي',
+    descriptionAr: 'الفريم الأقوى لتأكيد كتل الأوامر وسوينج الأوردر بلوك ومناطق الكسر الحقيقي (BOS).',
+    badgeAr: 'هيكل رئيسي 📊',
+  },
+  {
+    id: '1d',
+    labelAr: 'يومي (1d)',
+    subLabelAr: 'الاتجاه الكلي وسيولة القمم والقيعان',
+    descriptionAr: 'يحدد الاتجاه المؤسساتي العام ومستويات الفاليو إريا الكبرى وسيولة BSL / SSL.',
+    badgeAr: 'نطاق كلي 🌐',
+  },
+  {
+    id: '1w',
+    labelAr: 'أسبوعي (1w)',
     subLabelAr: 'سيولة الشراء والبيع الأسبوعية (BSL / SSL)',
     descriptionAr: 'رصد مناطق سحب سيولة قمة وقاع الأسبوع السابق ومناطق توازن كبار البنوك وصناديق التحوط.',
     badgeAr: 'سيولة أسبوعية 📊',
   },
   {
     id: '1M',
-    labelAr: 'شمعة الشهر (1M Monthly)',
+    labelAr: 'شهري (1M)',
     subLabelAr: 'النطاق الكلي والتوزيع الاستراتيجي الموسمي',
     descriptionAr: 'تحليل الإغلاقات الشهرية الكبرى ومستويات التضخم الجيوسياسي وتراكم عقود COMEX المؤسساتية.',
-    badgeAr: 'نطاق كلي 🌐',
+    badgeAr: 'استراتيجي 🏛️',
   },
 ];
+
+/**
+ * Resample daily candles to weekly or monthly.
+ * Uses deterministic aggregation:
+ *   Open = first candle's open
+ *   High = max of highs
+ *   Low = min of lows
+ *   Close = last candle's close
+ *   Volume = sum
+ *   Time = first candle's openTime
+ *
+ * NO Math.random.
+ * NO fake data.
+ */
+function resampleCandles(
+  source: Candle[],
+  groupSize: number,
+): Candle[] {
+  if (source.length === 0) return [];
+
+  const result: Candle[] = [];
+  for (let i = 0; i < source.length; i += groupSize) {
+    const group = source.slice(i, i + groupSize);
+    if (group.length === 0) continue;
+
+    let high = group[0].high;
+    let low = group[0].low;
+    let volume = 0;
+    for (const c of group) {
+      if (c.high > high) high = c.high;
+      if (c.low < low) low = c.low;
+      volume += c.volume ?? 0;
+    }
+
+    result.push({
+      symbol: group[0].symbol,
+      timeframe: group[0].timeframe,
+      openTime: group[0].openTime,
+      closeTime: group[group.length - 1].closeTime,
+      open: group[0].open,
+      high,
+      low,
+      close: group[group.length - 1].close,
+      volume,
+      volumeType: group[0].volumeType,
+      complete: true,
+      source: group[0].source,
+    });
+  }
+
+  return result;
+}
+
+function mapRawCandlesToCandleData(
+  candles: Candle[],
+  timeframe: ChartTimeframe,
+): CandleData[] {
+  return candles.map((c) => {
+    const timeSec = Math.floor(c.openTime / 1000);
+    const d = new Date(c.openTime);
+    const dateStr = d.toLocaleDateString('ar-EG', { month: 'numeric', day: 'numeric' }) + ' ' +
+      d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    const change = Number((c.close - c.open).toFixed(2));
+    const changePercent = c.open > 0 ? Number(((change / c.open) * 100).toFixed(2)) : 0;
+    const range = c.high - c.low;
+    const bodyRatio = range > 0 ? Number((Math.abs(c.close - c.open) / range).toFixed(2)) : 0.5;
+    const upperWick = Number((c.high - Math.max(c.open, c.close)).toFixed(2));
+    const lowerWick = Number((Math.min(c.open, c.close) - c.low).toFixed(2));
+    const isBull = c.close >= c.open;
+    return {
+      time: timeSec,
+      dateStr,
+      open: c.open,
+      high: c.high,
+      low: c.low,
+      close: c.close,
+      volume: c.volume ?? 0,
+      change,
+      changePercent,
+      isBullish: isBull,
+      timeframe,
+      bodyRatio,
+      upperWick,
+      lowerWick,
+      patternAr: isBull ? 'شمعة شرائية مؤسساتية (COMEX GC)' : 'شمعة بيعية تصريفية (COMEX GC)',
+    };
+  });
+}
+
+async function fetchCandlesForChart(
+  timeframe: ChartTimeframe,
+  barCount: number = 60,
+): Promise<{ candles: CandleData[]; source: string; symbol: string }> {
+  // Determine what to fetch from TradingView
+  // For 1w and 1M, we fetch 1d and resample locally
+  let fetchTimeframe: '1m' | '5m' | '15m' | '30m' | '1h' | '4h' | '1d';
+  let resampleGroup = 1;
+
+  if (timeframe === '1w') {
+    fetchTimeframe = '1d';
+    resampleGroup = 7;
+  } else if (timeframe === '1M') {
+    fetchTimeframe = '1d';
+    resampleGroup = 30;
+  } else {
+    fetchTimeframe = timeframe as '1m' | '5m' | '15m' | '30m' | '1h' | '4h' | '1d';
+    resampleGroup = 1;
+  }
+
+  const effectiveBarCount = resampleGroup > 1 ? Math.max(barCount * resampleGroup, 300) : barCount;
+
+  // 1. Try Primary: COMEX:GC1! via /api/tv/history/futures
+  try {
+    const res = await fetchTvHistory({
+      key: 'futures',
+      timeframe: fetchTimeframe,
+      barCount: effectiveBarCount,
+    });
+    if (res.ok && res.candles.length > 0) {
+      let rawCandles = res.candles;
+      if (resampleGroup > 1) {
+        rawCandles = resampleCandles(rawCandles, resampleGroup);
+      }
+      return {
+        candles: mapRawCandlesToCandleData(rawCandles, timeframe),
+        source: resampleGroup > 1 ? `COMEX GC1! (${timeframe} Resampled)` : 'COMEX GC1! (Futures)',
+        symbol: 'COMEX:GC1!',
+      };
+    }
+  } catch {
+    // Fall through to spot
+  }
+
+  // 2. Try Secondary: OANDA:XAUUSD via /api/tv/history/spot
+  try {
+    const res = await fetchTvHistory({
+      key: 'spot',
+      timeframe: fetchTimeframe,
+      barCount: effectiveBarCount,
+    });
+    if (res.ok && res.candles.length > 0) {
+      let rawCandles = res.candles;
+      if (resampleGroup > 1) {
+        rawCandles = resampleCandles(rawCandles, resampleGroup);
+      }
+      return {
+        candles: mapRawCandlesToCandleData(rawCandles, timeframe),
+        source: resampleGroup > 1 ? `OANDA XAUUSD (${timeframe} Resampled)` : 'OANDA XAUUSD (Spot)',
+        symbol: 'OANDA:XAUUSD',
+      };
+    }
+  } catch {
+    // Fall through
+  }
+
+  // 3. Fallback to existing candlesService
+  const legacy = await fetchCandlesData(timeframe);
+  return {
+    candles: legacy.candles,
+    source: legacy.source || 'Spot Cache',
+    symbol: legacy.symbol || 'XAUUSD',
+  };
+}
 
 export const CandlestickChartCard: React.FC<CandlestickChartCardProps> = ({
   currentPrice,
   onRefreshLivePrice,
 }) => {
-  const [selectedTf, setSelectedTf] = useState<ChartTimeframe>('4H');
+  const [selectedTf, setSelectedTf] = useState<ChartTimeframe>('5m');
   const [candlesData, setCandlesData] = useState<CandleResponseData | null>(null);
+  const [activeSource, setActiveSource] = useState<string>('COMEX GC1! (Futures)');
+  const [activeSymbol, setActiveSymbol] = useState<string>('COMEX:GC1!');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [hoveredCandle, setHoveredCandle] = useState<CandleData | null>(null);
   const [showEMAs, setShowEMAs] = useState<boolean>(true);
@@ -95,10 +297,39 @@ export const CandlestickChartCard: React.FC<CandlestickChartCardProps> = ({
   const loadCandles = async (tf: ChartTimeframe, isBackground = false) => {
     if (!isBackground) setIsLoading(true);
     try {
-      const data = await fetchCandlesData(tf, currentPrice);
-      setCandlesData(data);
+      const result = await fetchCandlesForChart(tf, 60);
+      setActiveSource(result.source);
+      setActiveSymbol(result.symbol);
+
+      const latest = result.candles[result.candles.length - 1];
+      const summaryItem: MultiTimeframeSummary = {
+        timeframe: tf,
+        labelAr: TIMEFRAMES.find(t => t.id === tf)?.labelAr || tf,
+        candle: latest,
+        trendAr: latest ? (latest.isBullish ? 'صاعد' : 'هابط') : 'محايد',
+        momentumScore: 80,
+        highLiquidityLevel: latest ? latest.high : 0,
+        lowLiquidityLevel: latest ? latest.low : 0,
+        statusAr: 'نشط',
+      };
+
+      const summaries = {} as Record<ChartTimeframe, MultiTimeframeSummary>;
+      for (const t of TIMEFRAMES) {
+        summaries[t.id] = { ...summaryItem, timeframe: t.id, labelAr: t.labelAr };
+      }
+
+      setCandlesData({
+        timeframe: tf,
+        candles: result.candles,
+        latestCandle: latest,
+        summary: summaryItem,
+        allTimeframesSummary: summaries,
+        symbol: result.symbol,
+        source: result.source,
+        updatedAt: new Date().toISOString(),
+      });
     } catch {
-      // Handled in service
+      // Keep previous data on transient error
     } finally {
       if (!isBackground) setIsLoading(false);
     }
@@ -252,15 +483,18 @@ export const CandlestickChartCard: React.FC<CandlestickChartCardProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-base sm:text-lg font-bold text-white tracking-wide">
-                  الشارت الزمني المؤسساتي للذهب <span className="text-amber-400">XAUUSD / COMEX GC</span>
+                  الشارت الزمني المؤسساتي للذهب <span className="text-amber-400">{activeSymbol}</span>
                 </h2>
                 <span className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                   مباشر 3 ثوانٍ
                 </span>
+                <span className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/30">
+                  {activeSource}
+                </span>
               </div>
               <p className="text-xs text-zinc-400 mt-0.5">
-                تتبع شموع الأربع ساعات (4H)، شمعة اليوم (1D)، شمعة الأسبوع (1W)، وشمعة الشهر (1M) مع كتل الأوامر ومناطق السيولة
+                بيانات حقيقية لعقود الذهب الآجلة (COMEX GC1!) والسبوت من TradingView — الأطر الزمنية من 1 دقيقة إلى يومي
               </p>
             </div>
           </div>
@@ -289,8 +523,8 @@ export const CandlestickChartCard: React.FC<CandlestickChartCardProps> = ({
           </div>
         </div>
 
-        {/* 2. The 4 Timeframe Switcher Tabs (4H / 1D / 1W / 1M) */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 pt-3">
+        {/* 2. The Timeframe Switcher Tabs (1m / 5m / 15m / 30m / 1h / 4h / 1d / 1w / 1M) */}
+        <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-2 pt-3">
           {TIMEFRAMES.map((tf) => {
             const isSelected = selectedTf === tf.id;
             const summary = candlesData?.allTimeframesSummary?.[tf.id];
@@ -302,7 +536,7 @@ export const CandlestickChartCard: React.FC<CandlestickChartCardProps> = ({
                 key={tf.id}
                 id={`tf-btn-${tf.id}`}
                 onClick={() => setSelectedTf(tf.id)}
-                className={`p-3 rounded-xl border text-right transition-all flex flex-col justify-between cursor-pointer relative overflow-hidden ${
+                className={`p-2.5 rounded-xl border text-right transition-all flex flex-col justify-between cursor-pointer relative overflow-hidden ${
                   isSelected
                     ? 'bg-gradient-to-br from-amber-500/15 via-[#161B26] to-[#0E121A] border-amber-500/50 shadow-md shadow-amber-500/10'
                     : 'bg-[#121622] hover:bg-[#161C2C] border-[#202738] text-zinc-300'
@@ -316,23 +550,23 @@ export const CandlestickChartCard: React.FC<CandlestickChartCardProps> = ({
                   <span className={`text-xs font-bold ${isSelected ? 'text-amber-300' : 'text-zinc-200'}`}>
                     {tf.labelAr}
                   </span>
-                  <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
+                  <span className={`text-[9px] font-mono px-1 py-0.2 rounded ${
                     isSelected ? 'bg-amber-400/20 text-amber-300 border border-amber-400/30' : 'bg-zinc-800 text-zinc-400'
                   }`}>
                     {tf.badgeAr}
                   </span>
                 </div>
 
-                <div className="text-[11px] text-zinc-400 line-clamp-1 mb-2">
+                <div className="text-[10px] text-zinc-400 line-clamp-1 mb-1.5">
                   {tf.subLabelAr}
                 </div>
 
                 {/* Micro Candle Stats */}
-                <div className="pt-2 border-t border-[#1F273A] flex items-center justify-between text-[11px] font-mono">
+                <div className="pt-1.5 border-t border-[#1F273A] flex items-center justify-between text-[10px] font-mono">
                   <span className="text-zinc-400">الإغلاق:</span>
-                  <span className={`font-bold flex items-center gap-1 ${isBull ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    {isBull ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                    ${candle ? candle.close.toFixed(2) : currentPrice.toFixed(2)}
+                  <span className={`font-bold flex items-center gap-0.5 ${isBull ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {isBull ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
+                    ${candle ? candle.close.toFixed(1) : currentPrice.toFixed(1)}
                   </span>
                 </div>
               </button>
@@ -732,13 +966,13 @@ export const CandlestickChartCard: React.FC<CandlestickChartCardProps> = ({
         </div>
       </div>
 
-      {/* 4. Multi-Timeframe Structural Matrix (مصفوفة الشموع المؤسساتية الأربعة) */}
+      {/* 4. Multi-Timeframe Structural Matrix (مصفوفة الشموع المؤسساتية) */}
       <div className="bg-[#0E121A] border border-[#1E2433] rounded-xl p-4 shadow-lg">
         <div className="flex items-center justify-between mb-3 pb-2 border-b border-[#181E2C]">
           <div className="flex items-center gap-2">
             <Layers className="w-4 h-4 text-amber-400" />
             <h3 className="text-sm font-bold text-white">
-              مصفوفة مقارنة الأطر الزمنية الأربعة (4H • 1D • 1W • 1M Structure)
+              مصفوفة مقارنة الأطر الزمنية المؤسساتية (1m • 5m • 15m • 30m • 1h • 4h • 1d • 1w • 1M)
             </h3>
           </div>
           <span className="text-xs text-zinc-400 font-mono">
@@ -746,7 +980,7 @@ export const CandlestickChartCard: React.FC<CandlestickChartCardProps> = ({
           </span>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-2.5">
           {TIMEFRAMES.map((tf) => {
             const summary = candlesData?.allTimeframesSummary?.[tf.id];
             const c = summary?.candle || latestCandle;

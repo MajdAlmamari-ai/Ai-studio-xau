@@ -28,7 +28,6 @@ import { downloadProjectZip } from '../utils/downloadHelper';
 
 export type ActiveTabType = 
   | 'terminal' 
-  | 'gateio'
   | 'multi_timeframe'
   | 'charts'
   | 'mt5'
@@ -97,7 +96,6 @@ export const Header: React.FC<HeaderProps> = ({
   const tabs: TabItem[] = [
     // 1. Trading Desk
     { id: 'terminal', label: 'التحليل الفوري وSMC', icon: <Zap className="w-3.5 h-3.5" />, category: 'trading' },
-    { id: 'gateio', label: 'بوابة Gate.io (الذهب الفوري Spot)', icon: <Globe className="w-3.5 h-3.5" />, badge: 'XAU Spot ⚡', category: 'trading' },
     { id: 'multi_timeframe', label: 'التحليل متعدد الفريمات (MTF)', icon: <Layers className="w-3.5 h-3.5" />, badge: '5 فريمات ⚡', category: 'trading' },
     { id: 'charts', label: 'الشارت الزمني (4H/1D/1W/1M)', icon: <BarChart2 className="w-3.5 h-3.5" />, badge: 'الشموع 🕯️', category: 'trading' },
     { id: 'mt5', label: 'بث الأسعار السحابي (Cloud)', icon: <Cpu className="w-3.5 h-3.5" />, badge: 'Tencent / VSA ⚡', category: 'trading' },

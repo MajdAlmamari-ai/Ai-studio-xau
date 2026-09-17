@@ -69,64 +69,81 @@ export const SourceStatusPanel: React.FC<SourceStatusPanelProps> = ({
         )}
       </div>
 
-      {/* Spot Source Summary */}
-      <div className="mb-4 p-3 bg-[#0A0C10] rounded-lg border border-[#1A1D26]">
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-zinc-400">السعر الفوري:</span>
-          <div className="flex items-center gap-2">
-            <span className="text-white font-mono">{spotSource}</span>
-            <span
-              className={
-                spotQuality === 'REAL'
-                  ? 'text-emerald-400 font-bold'
-                  : spotQuality === 'FALLBACK'
-                  ? 'text-amber-400 font-bold'
-                  : 'text-rose-400 font-bold'
-              }
-            >
-              [{spotQuality}]
+        {/* Spot Source Summary */}
+        <div className={`mb-4 p-3 rounded-lg border text-xs ${
+          spotQuality === 'UNAVAILABLE' 
+            ? 'bg-rose-950/30 border-rose-500/40 text-rose-200' 
+            : 'bg-[#0A0C10] border-[#1A1D26]'
+        }`}>
+          <div className="flex items-center justify-between">
+            <span className="text-zinc-400">السعر الفوري:</span>
+            <div className="flex items-center gap-2">
+              <span className="text-white font-mono">{spotSource}</span>
+              <span
+                className={
+                  spotQuality === 'REAL'
+                    ? 'text-emerald-400 font-bold'
+                    : spotQuality === 'FALLBACK'
+                    ? 'text-amber-400 font-bold'
+                    : 'text-rose-400 font-bold px-2 py-0.5 rounded bg-rose-500/10 border border-rose-500/20'
+                }
+              >
+                [{spotQuality === 'UNAVAILABLE' ? 'UNAVAILABLE (غير متاح)' : spotQuality}]
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center justify-between text-xs mt-2">
+            <span className="text-zinc-400">الجلسة:</span>
+            <span className="text-white font-mono flex items-center gap-1">
+              <Clock className="w-3 h-3" />
+              {session}
             </span>
           </div>
         </div>
-        <div className="flex items-center justify-between text-xs mt-2">
-          <span className="text-zinc-400">الجلسة:</span>
-          <span className="text-white font-mono flex items-center gap-1">
-            <Clock className="w-3 h-3" />
-            {session}
-          </span>
-        </div>
-      </div>
 
-      {/* Sources List */}
-      <div className="space-y-2">
-        {sources.map((s) => (
-          <div
-            key={s.sourceId}
-            id={`source-item-${s.sourceId}`}
-            className="flex items-center justify-between p-2 bg-[#0A0C10] rounded border border-[#1A1D26] text-xs"
-          >
-            <div className="flex items-center gap-2">
-              {statusIcon(s.status)}
-              <span className="text-white">{s.label}</span>
-            </div>
-            <div className="flex items-center gap-2 text-zinc-400">
-              {s.limit !== undefined && Number.isFinite(s.limit) && (
-                <span className="font-mono">
-                  {s.used ?? 0}/{s.limit}
+        {/* Sources List */}
+        <div className="space-y-2">
+          {sources.map((s) => (
+            <div
+              key={s.sourceId}
+              id={`source-item-${s.sourceId}`}
+              className={`flex items-center justify-between p-2 rounded border text-xs ${
+                s.status === 'UNAVAILABLE'
+                  ? 'bg-rose-950/25 border-rose-500/30 text-rose-300'
+                  : 'bg-[#0A0C10] border-[#1A1D26]'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                {statusIcon(s.status)}
+                <span className={s.status === 'UNAVAILABLE' ? 'text-rose-300 font-semibold' : 'text-white'}>
+                  {s.label}
                 </span>
-              )}
-              {s.resetInMs !== undefined && Number.isFinite(s.resetInMs) && (
-                <span className="text-[10px] text-zinc-500">
-                  إعادة: {formatMs(s.resetInMs)}
-                </span>
-              )}
-              {s.note && (
-                <span className="text-[10px] text-amber-400">{s.note}</span>
-              )}
+                {s.status === 'UNAVAILABLE' && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                    غير متاح
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 text-zinc-400">
+                {s.limit !== undefined && Number.isFinite(s.limit) && (
+                  <span className="font-mono">
+                    {s.used ?? 0}/{s.limit}
+                  </span>
+                )}
+                {s.resetInMs !== undefined && Number.isFinite(s.resetInMs) && (
+                  <span className="text-[10px] text-zinc-500">
+                    إعادة: {formatMs(s.resetInMs)}
+                  </span>
+                )}
+                {s.note && (
+                  <span className={`text-[10px] ${s.status === 'UNAVAILABLE' ? 'text-rose-400' : 'text-amber-400'}`}>
+                    {s.note}
+                  </span>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
     </div>
   );
 };

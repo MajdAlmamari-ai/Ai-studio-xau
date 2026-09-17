@@ -38,32 +38,22 @@ export const SystemDiagnosticsCard: React.FC = () => {
 
   const sources: SourceStatus[] = [
     {
+      sourceId: 'tradingview',
+      label: 'TradingView Relay (COMEX:GC1! & Spot)',
+      status: 'OK',
+      note: 'المصدر الأساسي الحقيقي ⚡',
+    },
+    {
       sourceId: 'gold-api',
-      label: 'Gold-API (Spot)',
+      label: 'Gold-API (Spot Reference)',
       status: 'OK',
-    },
-    {
-      sourceId: 'gateio-futures',
-      label: 'Gate.io Futures (CVD)',
-      status: 'OK',
-    },
-    {
-      sourceId: 'gateio-rest',
-      label: 'Gate.io REST (Candles)',
-      status: 'OK',
+      note: 'مرجعي',
     },
     {
       sourceId: 'yahoo',
-      label: 'Yahoo (GC=F Context)',
+      label: 'Yahoo Finance (GC=F Context)',
       status: 'OK',
-    },
-    {
-      sourceId: 'twelve-data',
-      label: 'Twelve Data',
-      status: 'OK',
-      limit: 800,
-      used: 0,
-      reserve: 160,
+      note: 'احتياطي اختياري',
     },
   ];
   
@@ -333,7 +323,7 @@ export const SystemDiagnosticsCard: React.FC = () => {
 
       {/* 2.5 Data Sources Health & Budget Panel */}
       <SourceStatusPanel
-        spotSource="gold-api"
+        spotSource="TradingView Relay"
         spotQuality="REAL"
         session={session}
         sources={sources}

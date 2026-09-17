@@ -6,7 +6,6 @@ import {
   ScenarioProjection 
 } from '../types';
 import { 
-  fetchGoldPriceWithStatus, 
   triggerAutoCalibration, 
   setAutoCalibratePricingMode 
 } from '../services/goldApiService';
@@ -24,10 +23,11 @@ export function useMarketData(currentBias: 'BULLISH' | 'BEARISH' | 'NEUTRAL') {
   const [newsData, setNewsData] = useState<EconomicNewsItem[]>(GOLD_ECONOMIC_NEWS);
   const [scenarioData, setScenarioData] = useState<Record<'15M' | '1H' | '4H' | '1D', ScenarioProjection> | null>(null);
   const [isLoadingPrice, setIsLoadingPrice] = useState<boolean>(false);
-  const [activeScenario, setActiveScenario] = useState<string>('جاري التهيئة والاتصال ببوابة Gate.io Spot API v4 (XAU/USD Spot)...');
+  const [activeScenario, setActiveScenario] = useState<string>('جاري التهيئة والاتصال المباشر بشبكة TradingView المؤسساتية...');
   
   // Connection diagnostics & resilience states
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('reconnecting');
+  const [spotQuality, setSpotQuality] = useState<'REAL' | 'UNAVAILABLE'>('REAL');
   const [consecutiveErrors, setConsecutiveErrors] = useState<number>(0);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
 
@@ -53,7 +53,7 @@ export function useMarketData(currentBias: 'BULLISH' | 'BEARISH' | 'NEUTRAL') {
     source: string;
     bid: number | null;
     ask: number | null;
-    quality: 'REAL' | 'FALLBACK';
+    quality: 'REAL';
   } | null> {
     // Attempt 1: TradingView Relay (Primary live feed via /api/tv/quote/spot)
     try {
@@ -74,7 +74,7 @@ export function useMarketData(currentBias: 'BULLISH' | 'BEARISH' | 'NEUTRAL') {
     // Attempt 2: Gold-API (Direct spot)
     try {
       const goldResult = await fetchGoldApiSpot();
-      if (goldResult.ok) {
+      if (goldResult.ok && goldResult.data.price > 0) {
         return {
           price: goldResult.data.price,
           source: 'gold-api',
@@ -89,26 +89,7 @@ export function useMarketData(currentBias: 'BULLISH' | 'BEARISH' | 'NEUTRAL') {
       console.warn('[useMarketData] Gold-API threw:', err);
     }
 
-    // Attempt 3: Cloud Engine (Fallback)
-    try {
-      const cloudResult = await fetchGoldPriceWithStatus(
-        lastKnownPriceRef.current,
-        signal,
-      );
-      if (cloudResult.isSuccess && cloudResult.data.price > 0) {
-        return {
-          price: cloudResult.data.price,
-          source: cloudResult.data.source || 'cloud-engine',
-          bid: cloudResult.data.bid ?? null,
-          ask: cloudResult.data.ask ?? null,
-          quality: 'FALLBACK',
-        };
-      }
-    } catch (err) {
-      console.warn('[useMarketData] Cloud Engine failed:', err);
-    }
-
-    // All failed
+    // All real sources failed - do NOT silently use fake or synthetic data
     return null;
   }
 
@@ -134,10 +115,11 @@ export function useMarketData(currentBias: 'BULLISH' | 'BEARISH' | 'NEUTRAL') {
       const chainResult = await fetchPriceWithChain(controller.signal);
 
       if (chainResult && chainResult.price > 0) {
-        // Successful poll from Gold-API or fallback Cloud Engine
+        // Successful poll from TradingView or Gold-API
         consecutiveErrorsRef.current = 0;
         setConsecutiveErrors(0);
-        setConnectionStatus(chainResult.quality === 'REAL' ? 'connected' : 'fallback');
+        setSpotQuality('REAL');
+        setConnectionStatus('connected');
         setLastSyncTime(new Date());
 
         lastKnownPriceRef.current = chainResult.price;
@@ -154,9 +136,7 @@ export function useMarketData(currentBias: 'BULLISH' | 'BEARISH' | 'NEUTRAL') {
           spreadPips: chainResult.bid && chainResult.ask ? Number(((chainResult.ask - chainResult.bid) * 10).toFixed(1)) : null,
           statusMessageAr: chainResult.source === 'tradingview'
             ? 'تغذية لحظية مباشرة وفائقة الدقة من شبكة TradingView المؤسساتية (XAU/USD Spot)'
-            : chainResult.quality === 'REAL'
-            ? 'تغذية سحابية مباشرة ونشطة من Gold-API.com (XAU/USD Spot)'
-            : `تغذية احتياطية نشطة (${chainResult.source})`,
+            : 'تغذية سحابية مباشرة ونشطة من Gold-API.com (XAU/USD Spot)',
         };
         setPriceData(spotData);
 
@@ -177,7 +157,8 @@ export function useMarketData(currentBias: 'BULLISH' | 'BEARISH' | 'NEUTRAL') {
           }
         });
       } else {
-        // Programmatic connection failure handling
+        // Explicit UNAVAILABLE state when live sources fail
+        setSpotQuality('UNAVAILABLE');
         consecutiveErrorsRef.current += 1;
         const errCount = consecutiveErrorsRef.current;
         setConsecutiveErrors(errCount);
@@ -194,7 +175,7 @@ export function useMarketData(currentBias: 'BULLISH' | 'BEARISH' | 'NEUTRAL') {
         }
         const failMessage = errCount < 3
           ? `جاري إعادة الاتصال بمصادر الأسعار (محاولة ${errCount})...`
-          : `انقطاع مؤقت بالشبكة - تم تثبيت آخر سعر ($${fallbackPrice.toFixed(2)}) وجاري المحاولة كل 3 ثوانٍ`;
+          : `انقطاع مؤقت بالشبكة - تم تثبيت آخر سعر حقيقي ($${fallbackPrice.toFixed(2)}) وجاري المحاولة كل 3 ثوانٍ`;
 
         const preservedData: GoldPriceData = {
           price: fallbackPrice,
@@ -224,6 +205,7 @@ export function useMarketData(currentBias: 'BULLISH' | 'BEARISH' | 'NEUTRAL') {
         return;
       }
 
+      setSpotQuality('UNAVAILABLE');
       consecutiveErrorsRef.current += 1;
       const errCount = consecutiveErrorsRef.current;
       setConsecutiveErrors(errCount);
@@ -427,6 +409,7 @@ export function useMarketData(currentBias: 'BULLISH' | 'BEARISH' | 'NEUTRAL') {
     activeScenario,
     currentPrice,
     connectionStatus,
+    spotQuality,
     consecutiveErrors,
     lastSyncTime,
     isReconnecting: connectionStatus === 'reconnecting',

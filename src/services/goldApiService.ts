@@ -58,13 +58,13 @@ export async function fetchGoldPriceWithStatus(
             source: quote.source || 'gateio_cfd',
             isOffline: quote.isOffline ?? false,
             statusMessageAr: quote.statusMessageAr || 'الضبط التلقائي نشط ومطابق لشارت Gate CFD (XAUUSD) الحي',
-            change24h: quote.change24h ?? -1.80,
-            high24h: quote.high24h ?? Number((p + 12).toFixed(2)),
-            low24h: quote.low24h ?? Number((p - 14).toFixed(2)),
-            bid: quote.bid ?? Number((p - 0.20).toFixed(2)),
-            ask: quote.ask ?? Number((p + 0.20).toFixed(2)),
-            spreadPoints: quote.spreadPoints ?? 20,
-            spreadPips: quote.spreadPips ?? 2.0,
+            change24h: quote.change24h ?? 0,
+            high24h: quote.high24h ?? p,
+            low24h: quote.low24h ?? p,
+            bid: quote.bid ?? p,
+            ask: quote.ask ?? p,
+            spreadPoints: quote.spreadPoints ?? 0,
+            spreadPips: quote.spreadPips ?? 0,
             spreadOffset: quote.spreadOffset ?? 0,
             spreadOffsetFormatted: quote.spreadOffsetFormatted ?? '0.00$',
             referencePrice: p,
@@ -74,10 +74,10 @@ export async function fetchGoldPriceWithStatus(
             spotPrice: quote.spotPrice ?? p,
             basisSpread: quote.basisSpread ?? 0,
             autoCalibrated: quote.autoCalibrated ?? true,
-            mt5Bid: quote.bid ?? Number((p - 0.20).toFixed(2)),
-            mt5Ask: quote.ask ?? Number((p + 0.20).toFixed(2)),
-            mt5SpreadPoints: quote.spreadPoints ?? 20,
-            mt5SpreadPips: quote.spreadPips ?? 2.0,
+            mt5Bid: quote.bid ?? p,
+            mt5Ask: quote.ask ?? p,
+            mt5SpreadPoints: quote.spreadPoints ?? 0,
+            mt5SpreadPips: quote.spreadPips ?? 0,
           },
         };
       }
@@ -114,12 +114,12 @@ export async function fetchGoldPriceWithStatus(
       const price = parseFloat(t?.last);
 
       if (!isNaN(price) && price > 0) {
-        const bid = parseFloat(t.highest_bid) || price - 0.25;
-        const ask = parseFloat(t.lowest_ask) || price + 0.25;
-        const high = parseFloat(t.high_24h) || price + 10.0;
-        const low = parseFloat(t.low_24h) || price - 10.0;
-        const change24h = parseFloat(t.change_percentage) || 0.5;
-        const spreadVal = Number(Math.max(0.1, ask - bid).toFixed(2));
+        const bid = parseFloat(t.highest_bid) || price;
+        const ask = parseFloat(t.lowest_ask) || price;
+        const high = parseFloat(t.high_24h) || price;
+        const low = parseFloat(t.low_24h) || price;
+        const change24h = parseFloat(t.change_percentage) || 0;
+        const spreadVal = Number(Math.max(0, ask - bid).toFixed(2));
         const latency = Date.now() - startTime;
 
         return {
@@ -190,20 +190,20 @@ export async function fetchGoldPriceWithStatus(
               source: 'eastmoney_gc',
               isOffline: false,
               statusMessageAr: 'تغذية سحابية احتياطية نشطة من خوادم Eastmoney',
-              change24h: -0.18,
-              high24h: price + 6.0,
-              low24h: price - 6.0,
-              bid: price - 0.20,
-              ask: price + 0.20,
-              spreadPoints: 40,
-              spreadPips: 4.0,
-              spreadOffset: 44.80,
-              spreadOffsetFormatted: '+44.80$',
-              referencePrice: 4423.70,
-              mt5Bid: price - 0.20,
-              mt5Ask: price + 0.20,
-              mt5SpreadPoints: 40,
-              mt5SpreadPips: 4.0,
+              change24h: 0,
+              high24h: price,
+              low24h: price,
+              bid: price,
+              ask: price,
+              spreadPoints: 0,
+              spreadPips: 0,
+              spreadOffset: 0,
+              spreadOffsetFormatted: '0.00$',
+              referencePrice: price,
+              mt5Bid: price,
+              mt5Ask: price,
+              mt5SpreadPoints: 0,
+              mt5SpreadPips: 0,
             },
           };
         }
@@ -215,50 +215,67 @@ export async function fetchGoldPriceWithStatus(
     }
   }
 
-  // 4. Quaternary: Connection Failure Handling with Price Preservation
+  // 4. Connection Failure Handling
   const fallbackPrice = (typeof lastKnownPrice === 'number' && !isNaN(lastKnownPrice) && lastKnownPrice > 0)
     ? lastKnownPrice
-    : 4337.53;
+    : 0;
+
+  if (fallbackPrice <= 0) {
+    const err: any = new Error('Gold-API غير متاح');
+    err.code = 'GOLD_API_UNAVAILABLE';
+    err.shortAr = 'Gold-API غير متاح';
+    err.detailsAr = 'Gold-API ليس المصدر الأساسي.';
+    err.howToFix = ['استخدم TradingView', 'أعد المحاولة'];
+    throw err;
+  }
 
   return {
     isSuccess: false,
     source: 'cache_fallback',
     latencyMs: Date.now() - startTime,
-    error: 'تعذر الاتصال المباشر - تم تفعيل درع المرونة وتثبيت آخر سعر مؤسساتي مسجل',
+    error: 'تعذر الاتصال المباشر - تم تثبيت آخر سعر حقيقي مسجل',
     data: {
       price: Number(fallbackPrice.toFixed(2)),
       currency: 'USD',
-      symbol: 'XAU/USD (Gate CFD)',
-      name: 'Gate.io XAU/USD (الضبط التلقائي الاحتياطي)',
+      symbol: 'XAU/USD',
+      name: 'Gold Spot (XAU/USD)',
       updatedAt: new Date().toISOString(),
-      source: 'gateio_cfd',
+      source: 'fallback',
       isOffline: true,
-      statusMessageAr: `انقطاع مؤقت في الاتصال - تم تثبيت آخر سعر مسجل ($${fallbackPrice.toFixed(2)}) وجاري المحاولة كل 3 ثوانٍ`,
-      change24h: -1.80,
-      high24h: fallbackPrice + 8.50,
-      low24h: fallbackPrice - 9.20,
-      bid: fallbackPrice - 0.20,
-      ask: fallbackPrice + 0.20,
-      spreadPoints: 40,
-      spreadPips: 4.0,
+      statusMessageAr: `انقطاع مؤقت في الاتصال - تم تثبيت آخر سعر حقيقي ($${fallbackPrice.toFixed(2)})`,
+      change24h: 0,
+      high24h: fallbackPrice,
+      low24h: fallbackPrice,
+      bid: fallbackPrice,
+      ask: fallbackPrice,
+      spreadPoints: 0,
+      spreadPips: 0,
       spreadOffset: 0,
       spreadOffsetFormatted: '0.00$',
       referencePrice: fallbackPrice,
-      pricingMode: 'gateio_cfd',
-      autoCalibrated: true,
+      pricingMode: 'gateio_spot',
+      autoCalibrated: false,
       cfdPrice: fallbackPrice,
       spotPrice: fallbackPrice,
       basisSpread: 0,
-      mt5Bid: fallbackPrice - 0.20,
-      mt5Ask: fallbackPrice + 0.20,
-      mt5SpreadPoints: 40,
-      mt5SpreadPips: 4.0,
+      mt5Bid: fallbackPrice,
+      mt5Ask: fallbackPrice,
+      mt5SpreadPoints: 0,
+      mt5SpreadPips: 0,
     },
   };
 }
 
 export async function fetchGoldPrice(): Promise<GoldPriceData> {
   const result = await fetchGoldPriceWithStatus();
+  if (!result.isSuccess) {
+    const err: any = new Error('Gold-API غير متاح');
+    err.code = 'GOLD_API_UNAVAILABLE';
+    err.shortAr = 'Gold-API غير متاح';
+    err.detailsAr = 'Gold-API ليس المصدر الأساسي.';
+    err.howToFix = ['استخدم TradingView', 'أعد المحاولة'];
+    throw err;
+  }
   return result.data;
 }
 
@@ -300,7 +317,7 @@ export async function triggerAutoCalibration(): Promise<{ success: boolean; quot
 export async function fetchPricingModeStatus(): Promise<{ mode: string; currentPrice: number; autoCalibrated: boolean }> {
   const res = await fetch('/api/gold/pricing-mode');
   if (!res.ok) {
-    return { mode: 'gateio_cfd', currentPrice: 4337.53, autoCalibrated: true };
+    return { mode: 'gateio_cfd', currentPrice: 0, autoCalibrated: false };
   }
   return await res.json();
 }

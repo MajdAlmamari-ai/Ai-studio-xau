@@ -1,22 +1,20 @@
 import React from 'react';
 import { FuturesPriceData } from '../types';
 import { getGoldFuturesData } from '../services/futuresService';
-import { TrendingUp, Activity, Layers, Calendar, BarChart3, ArrowUpRight, ArrowDownRight, RotateCw, WifiOff, Globe } from 'lucide-react';
+import { TrendingUp, Activity, Layers, Calendar, BarChart3, ArrowUpRight, ArrowDownRight, RotateCw, WifiOff } from 'lucide-react';
 
 interface FuturesPriceCardProps {
   data?: FuturesPriceData | null;
   futuresData?: FuturesPriceData | null;
   spotPrice?: number | null;
   onRefresh?: () => void;
-  onOpenGateIo?: () => void;
 }
 
 export const FuturesPriceCard: React.FC<FuturesPriceCardProps> = ({ 
   data, 
   futuresData, 
   spotPrice, 
-  onRefresh,
-  onOpenGateIo
+  onRefresh
 }) => {
   const item: FuturesPriceData = data || futuresData || getGoldFuturesData(spotPrice ?? null);
   const effectiveSpot = typeof spotPrice === 'number' && spotPrice > 0 ? spotPrice : (item.spotPrice ?? null);
@@ -143,22 +141,6 @@ export const FuturesPriceCard: React.FC<FuturesPriceCardProps> = ({
         <span className="text-[11px] text-zinc-500 font-mono shrink-0 hidden sm:inline">
           تاريخ الاستحقاق: {item.expiryDate}
         </span>
-      </div>
-
-      {/* Gate.io Connectivity Link */}
-      <div className="mt-2.5 pt-2 border-t border-[#1A1D26] flex items-center justify-between text-xs font-mono">
-        <div className="flex items-center gap-1.5 text-zinc-400">
-          <Globe className="w-3.5 h-3.5 text-amber-400" />
-          <span className="text-[11px]">مزامنة Gate.io (PAXG Spot & XAU Futures):</span>
-        </div>
-        {onOpenGateIo && (
-          <button
-            onClick={onOpenGateIo}
-            className="text-amber-400 hover:text-amber-300 font-bold text-[11px] underline flex items-center gap-1 cursor-pointer"
-          >
-            <span>عرض أسعار وعمق Gate.io ⚡</span>
-          </button>
-        )}
       </div>
     </div>
   );

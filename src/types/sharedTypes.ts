@@ -13,6 +13,35 @@ export interface NormalizedCandle {
   volume: number;
 }
 
+export type VolumeType = 'CONTRACT' | 'TICK' | 'UNAVAILABLE';
+
+export interface Candle {
+  symbol: string;
+  timeframe: string;
+  openTime: number;
+  closeTime: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number | null;
+  volumeType: VolumeType;
+  complete: boolean;
+  source: string;
+}
+
+export function candleToNormalized(c: Candle): NormalizedCandle {
+  return {
+    time: Math.floor(c.openTime / 1000),
+    timeFormatted: new Date(c.openTime).toISOString(),
+    open: c.open,
+    high: c.high,
+    low: c.low,
+    close: c.close,
+    volume: c.volume ?? 0,
+  };
+}
+
 export interface GateIoSpotTicker {
   symbol: string;
   currencyPair: string;
