@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { GoldPriceData, FuturesPriceData } from '../types';
 import { downloadProjectZip } from '../utils/downloadHelper';
+import { MTFSummaryResponse } from '../services/goldService';
 
 export type ActiveTabType = 
   | 'terminal' 
@@ -48,6 +49,7 @@ export type ActiveTabType =
 
 interface HeaderProps {
   priceData: GoldPriceData | null;
+  mtfSummary?: MTFSummaryResponse | null;
   futuresData?: FuturesPriceData | null;
   activeTab: ActiveTabType;
   setActiveTab: (tab: ActiveTabType) => void;
@@ -60,6 +62,7 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({
   priceData,
+  mtfSummary,
   futuresData,
   activeTab,
   setActiveTab,

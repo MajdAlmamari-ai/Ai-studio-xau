@@ -18,6 +18,7 @@
 
 import WebSocket from 'ws';
 import { CandleRepository } from './candleRepository';
+import { TIMEFRAME_TO_TV_RESOLUTION, Timeframe } from '../src/constants/timeframes';
 
 export interface HistoryFetchResult {
   symbol: string;
@@ -51,17 +52,6 @@ const HEADERS: Record<string, string> = {
   'Accept-Language': 'en-US,en;q=0.9',
 };
 
-const TIMEFRAME_MAP: Record<string, string> = {
-  '1m': '1',
-  '5m': '5',
-  '15m': '15',
-  '30m': '30',
-  '1h': '60',
-  '4h': '240',
-  '1d': '1D',
-  '1w': '1W',
-};
-
 function frame(obj: unknown): string {
   const json = JSON.stringify(obj);
   return `~m~${json.length}~m~${json}`;
@@ -91,18 +81,18 @@ export class TvHistoryFetcher {
 
   async fetchHistory(
     symbol: string,
-    timeframe: string,
+    timeframe: Timeframe | string,
     barCount = 5000,
   ): Promise<HistoryFetchOutcome> {
     const started = Date.now();
-    const tvTf = TIMEFRAME_MAP[timeframe];
+    const tvTf = (TIMEFRAME_TO_TV_RESOLUTION as Record<string, string>)[timeframe];
     if (!tvTf) {
       return {
         ok: false,
         error: {
           code: 'INVALID_TIMEFRAME',
           shortAr: 'الإطار الزمني غير مدعوم',
-          detailsAr: `Supported: ${Object.keys(TIMEFRAME_MAP).join(', ')}`,
+          detailsAr: `Supported: ${Object.keys(TIMEFRAME_TO_TV_RESOLUTION).join(', ')}`,
           howToFix: ['اختر إطاراً مدعوماً'],
         },
       };
@@ -150,7 +140,7 @@ export class TvHistoryFetcher {
 
   async fetchDelta(
     symbol: string,
-    timeframe: string,
+    timeframe: Timeframe | string,
     lookbackBars = 500,
   ): Promise<HistoryFetchOutcome> {
     const lastBarTime = this.repo.getLatestBarTime(symbol, timeframe);
@@ -159,14 +149,14 @@ export class TvHistoryFetcher {
       return this.fetchHistory(symbol, timeframe, lookbackBars);
     }
 
-    const tvTf = TIMEFRAME_MAP[timeframe];
+    const tvTf = (TIMEFRAME_TO_TV_RESOLUTION as Record<string, string>)[timeframe];
     if (!tvTf) {
       return {
         ok: false,
         error: {
           code: 'INVALID_TIMEFRAME',
           shortAr: 'الإطار غير مدعوم',
-          detailsAr: `Supported: ${Object.keys(TIMEFRAME_MAP).join(', ')}`,
+          detailsAr: `Supported: ${Object.keys(TIMEFRAME_TO_TV_RESOLUTION).join(', ')}`,
           howToFix: ['اختر إطاراً مدعوماً'],
         },
       };

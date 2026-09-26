@@ -5,7 +5,7 @@
 
 export interface NormalizedCandle {
   time: number; // Unix timestamp in seconds
-  timeFormatted: string;
+  timeFormatted?: string;
   open: number;
   high: number;
   low: number;

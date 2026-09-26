@@ -21,6 +21,7 @@ import { ChartTimeframe, CandleData, CandleResponseData, MultiTimeframeSummary }
 import { Candle } from '../types/sharedTypes';
 import { fetchCandlesData } from '../services/candlesService';
 import { fetchTvHistory } from '../services/tvHistoryClient';
+import { TIMEFRAMES as CANONICAL_TIMEFRAMES, ALL_TIMEFRAMES, Timeframe } from '../constants/timeframes';
 
 interface CandlestickChartCardProps {
   currentPrice: number;
@@ -28,7 +29,7 @@ interface CandlestickChartCardProps {
 }
 
 const TIMEFRAMES: Array<{
-  id: ChartTimeframe;
+  id: Timeframe | '1M';
   labelAr: string;
   subLabelAr: string;
   descriptionAr: string;
@@ -89,13 +90,6 @@ const TIMEFRAMES: Array<{
     subLabelAr: 'سيولة الشراء والبيع الأسبوعية (BSL / SSL)',
     descriptionAr: 'رصد مناطق سحب سيولة قمة وقاع الأسبوع السابق ومناطق توازن كبار البنوك وصناديق التحوط.',
     badgeAr: 'سيولة أسبوعية 📊',
-  },
-  {
-    id: '1M',
-    labelAr: 'شهري (1M)',
-    subLabelAr: 'النطاق الكلي والتوزيع الاستراتيجي الموسمي',
-    descriptionAr: 'تحليل الإغلاقات الشهرية الكبرى ومستويات التضخم الجيوسياسي وتراكم عقود COMEX المؤسساتية.',
-    badgeAr: 'استراتيجي 🏛️',
   },
 ];
 
@@ -193,17 +187,14 @@ async function fetchCandlesForChart(
 ): Promise<{ candles: CandleData[]; source: string; symbol: string }> {
   // Determine what to fetch from TradingView
   // For 1w and 1M, we fetch 1d and resample locally
-  let fetchTimeframe: '1m' | '5m' | '15m' | '30m' | '1h' | '4h' | '1d';
+  let fetchTimeframe: Timeframe;
   let resampleGroup = 1;
 
   if (timeframe === '1w') {
     fetchTimeframe = '1d';
     resampleGroup = 7;
-  } else if (timeframe === '1M') {
-    fetchTimeframe = '1d';
-    resampleGroup = 30;
   } else {
-    fetchTimeframe = timeframe as '1m' | '5m' | '15m' | '30m' | '1h' | '4h' | '1d';
+    fetchTimeframe = timeframe as Timeframe;
     resampleGroup = 1;
   }
 
@@ -535,7 +526,7 @@ export const CandlestickChartCard: React.FC<CandlestickChartCardProps> = ({
               <button
                 key={tf.id}
                 id={`tf-btn-${tf.id}`}
-                onClick={() => setSelectedTf(tf.id)}
+                onClick={() => setSelectedTf(tf.id as ChartTimeframe)}
                 className={`p-2.5 rounded-xl border text-right transition-all flex flex-col justify-between cursor-pointer relative overflow-hidden ${
                   isSelected
                     ? 'bg-gradient-to-br from-amber-500/15 via-[#161B26] to-[#0E121A] border-amber-500/50 shadow-md shadow-amber-500/10'

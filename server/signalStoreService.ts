@@ -195,7 +195,7 @@ export function getServerJournalEntries(limitCount = 50): ServerJournalRecord[] 
 
 export function addServerExecutionLog(log: Omit<ServerLogEntry, 'id' | 'timestamp'>): ServerLogEntry {
   const newLog: ServerLogEntry = {
-    id: `log-srv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+    id: `log-srv-${Date.now()}-${executionLogsStore.length + 1}`,
     timestamp: new Date().toLocaleTimeString('ar-EG'),
     ...log,
   };

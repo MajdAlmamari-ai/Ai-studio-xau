@@ -342,12 +342,11 @@ function generateFallbackCandles(timeframe: ChartTimeframe, currentPrice: number
     const t = startSec + (i * stepSec);
     const progress = i / count;
     
-    // Wave simulation reaching live price at the end
-    const wave = Math.sin(progress * Math.PI * 3) * (volatility * 0.7);
-    const trend = (p - runningPrice) * (progress * 0.4);
+    // Deterministic progression reaching live price at the end
+    const trend = (p - runningPrice) * (progress * 0.5);
     const candleOpen = i === 0 ? runningPrice : candles[i - 1].close;
     
-    let candleClose = candleOpen + wave + trend + ((Math.random() - 0.46) * volatility * 0.5);
+    let candleClose = candleOpen + trend;
     if (i === count - 1) {
       candleClose = p; // End exactly at current price
     }
@@ -355,11 +354,10 @@ function generateFallbackCandles(timeframe: ChartTimeframe, currentPrice: number
     const isBull = candleClose >= candleOpen;
     const bodyHigh = Math.max(candleOpen, candleClose);
     const bodyLow = Math.min(candleOpen, candleClose);
-    const upperWickDelta = (volatility * 0.35) * Math.random();
-    const lowerWickDelta = (volatility * 0.35) * Math.random();
+    const wickDelta = volatility * 0.15;
 
-    const candleHigh = Number((bodyHigh + upperWickDelta).toFixed(2));
-    const candleLow = Number((bodyLow - lowerWickDelta).toFixed(2));
+    const candleHigh = Number((bodyHigh + wickDelta).toFixed(2));
+    const candleLow = Number((bodyLow - wickDelta).toFixed(2));
     const cOpen = Number(candleOpen.toFixed(2));
     const cClose = Number(candleClose.toFixed(2));
     const change = Number((cClose - cOpen).toFixed(2));
@@ -377,7 +375,7 @@ function generateFallbackCandles(timeframe: ChartTimeframe, currentPrice: number
     } : undefined);
 
     const baseVol = timeframe === '4H' ? 8400 : timeframe === '1D' ? 68000 : timeframe === '1W' ? 340000 : 1250000;
-    const volume = Math.round(baseVol * (0.8 + Math.random() * 0.5));
+    const volume = baseVol;
 
     candles.push({
       time: t,

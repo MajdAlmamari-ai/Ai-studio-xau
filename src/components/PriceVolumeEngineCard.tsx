@@ -90,7 +90,7 @@ export const PriceVolumeEngineCard: React.FC<PriceVolumeEngineCardProps> = () =>
       if (res.ok) {
         const data = await res.json();
         if (data.state) setEngineState(data.state);
-        setActionNotice('تمت إعادة حساب VWAP ومناطق القيمة (PoC/VAH/VAL) ومعايرة MGC*10 بنجاح.');
+        setActionNotice('تمت إعادة حساب VWAP ومناطق القيمة (PoC/VAH/VAL) لعقود TradingView GC1! بنجاح.');
         setTimeout(() => setActionNotice(null), 4000);
       }
     } catch (err: any) {
@@ -110,18 +110,28 @@ export const PriceVolumeEngineCard: React.FC<PriceVolumeEngineCardProps> = () =>
   }
 
   const {
-    activePrimarySource = 'BINANCE',
-    medianPrice = 4478.50,
-    syncedPrice = 4478.50,
-    binancePrice = 4478.50,
-    mgcPrice = 4479.20,
-    basisSpread = 0.70,
+    activePrimarySource = 'TRADINGVIEW' as any,
+    medianPrice = 0,
+    syncedPrice = 0,
+    spotPrice = 0,
+    mgcPrice = 0,
+    basisSpread = 0,
     exchanges,
     cvd,
     calibration,
     volumeValueEngine,
     failoverEvents = [],
   } = engineState || {};
+
+  const exchangeStatus = {
+    TRADINGVIEW: {
+      status: ((exchanges as any)?.TRADINGVIEW?.status as 'CONNECTED' | 'RECONNECTING' | 'DISCONNECTED' | 'STANDBY') || 'CONNECTED',
+      activePrimarySource: true,
+      lastUpdate: (exchanges as any)?.TRADINGVIEW?.lastUpdated
+        ? new Date((exchanges as any).TRADINGVIEW.lastUpdated).getTime()
+        : Date.now(),
+    },
+  };
 
   const isCaution = calibration?.cautionMode;
   const isPositiveDelta = (cvd?.cumulativeDelta ?? 0) >= 0;
@@ -145,7 +155,7 @@ export const PriceVolumeEngineCard: React.FC<PriceVolumeEngineCardProps> = () =>
               </span>
             </div>
             <p className="text-xs text-gray-400 mt-1">
-              Binance WebSocket Trades • Cumulative Volume Delta (CVD) • Rolling Basis Calibration • Multi-Exchange Failover • MGC*10 Anchored VWAP
+              TradingView WebSocket Relay (COMEX:GC1!) • Cumulative Volume Delta (CVD) • Rolling Basis Calibration • Anchored VWAP
             </p>
           </div>
         </div>
@@ -182,7 +192,7 @@ export const PriceVolumeEngineCard: React.FC<PriceVolumeEngineCardProps> = () =>
               </span>
             </div>
             <p className="text-gray-300 leading-relaxed">
-              تم رصد تباعد سعري بين سعر Binance الفوري وسعر عقود الذهب المصغرة (MGC=F) يتجاوز النسبة الآمنة (0.3%). 
+              تم رصد تباعد سعري عن سعر عقود الذهب (TradingView GC1!) يتجاوز النسبة الآمنة (0.3%). 
               قام النظام تلقائياً <strong className="text-white underline">بتخفيض حجم الصفقات بنسبة 50%</strong> لحماية رأس المال حتى استعادة التناغم السعري المؤسساتي.
             </p>
           </div>
@@ -208,25 +218,25 @@ export const PriceVolumeEngineCard: React.FC<PriceVolumeEngineCardProps> = () =>
             <Zap className="w-4 h-4 text-amber-400" />
           </div>
           <div className="text-2xl font-black font-mono text-amber-400 tracking-tight">
-            ${syncedPrice.toFixed(2)}
+            {syncedPrice > 0 ? `$${syncedPrice.toFixed(2)}` : 'غير متاح (UNAVAILABLE)'}
           </div>
           <div className="text-[11px] text-zinc-400 mt-1.5 flex items-center justify-between font-mono">
-            <span>معامل التصحيح: {calibration?.rollingBasisRatio?.toFixed(5)}</span>
-            <span className="text-amber-500 font-semibold">مؤطر بـ MGC</span>
+            <span>معامل التصحيح: {calibration?.rollingBasisRatio ? calibration.rollingBasisRatio.toFixed(5) : 'غير متاح'}</span>
+            <span className="text-amber-500 font-semibold">مؤطر بـ TradingView GC1!</span>
           </div>
         </div>
 
-        {/* Binance Feed Price */}
+        {/* TradingView Feed Price */}
         <div className="bg-[#121622] border border-[#222A40] p-4 rounded-xl">
           <div className="text-xs text-gray-400 flex items-center justify-between mb-1">
-            <span>سعر بينانس المباشر (Binance PAXG)</span>
+            <span>سعر تريدنج فيو المباشر (TradingView GC1!)</span>
             <Activity className="w-4 h-4 text-emerald-400" />
           </div>
           <div className="text-2xl font-black font-mono text-white tracking-tight">
-            ${binancePrice.toFixed(2)}
+            {spotPrice > 0 ? `$${spotPrice.toFixed(2)}` : 'غير متاح (UNAVAILABLE)'}
           </div>
           <div className="text-[11px] text-zinc-400 mt-1.5 flex items-center justify-between font-mono">
-            <span>تدفق الصفقات: aggTrade</span>
+            <span>تدفق العقود: COMEX:GC1!</span>
             <span className="text-emerald-400">بدون تأخير</span>
           </div>
         </div>
@@ -238,7 +248,7 @@ export const PriceVolumeEngineCard: React.FC<PriceVolumeEngineCardProps> = () =>
             <Sliders className="w-4 h-4 text-cyan-400" />
           </div>
           <div className="text-2xl font-black font-mono text-cyan-300 tracking-tight">
-            ${medianPrice.toFixed(2)}
+            {medianPrice > 0 ? `$${medianPrice.toFixed(2)}` : 'غير متاح (UNAVAILABLE)'}
           </div>
           <div className="text-[11px] text-zinc-400 mt-1.5 flex items-center justify-between font-mono">
             <span>فلتر الشموع الوهمية</span>
@@ -246,19 +256,21 @@ export const PriceVolumeEngineCard: React.FC<PriceVolumeEngineCardProps> = () =>
           </div>
         </div>
 
-        {/* MGC Futures Price */}
+        {/* TradingView Futures Basis */}
         <div className="bg-[#121622] border border-[#222A40] p-4 rounded-xl">
           <div className="text-xs text-gray-400 flex items-center justify-between mb-1">
-            <span>عقود الذهب المصغرة (MGC=F)</span>
+            <span>عقود الذهب الآجلة (TradingView GC1!)</span>
             <Layers className="w-4 h-4 text-blue-400" />
           </div>
           <div className="text-2xl font-black font-mono text-blue-300 tracking-tight">
-            ${mgcPrice.toFixed(2)}
+            {mgcPrice > 0 ? `$${mgcPrice.toFixed(2)}` : 'غير متاح (UNAVAILABLE)'}
           </div>
           <div className="text-[11px] text-zinc-400 mt-1.5 flex items-center justify-between font-mono">
             <span>فارق البيسس (Basis):</span>
             <span className="text-blue-400 font-bold font-mono">
-              {basisSpread >= 0 ? `+${basisSpread.toFixed(2)}` : basisSpread.toFixed(2)}$
+              {spotPrice > 0 && mgcPrice > 0
+                ? (basisSpread >= 0 ? `+${basisSpread.toFixed(2)}$` : `${basisSpread.toFixed(2)}$`)
+                : 'غير متاح'}
             </span>
           </div>
         </div>
@@ -281,24 +293,41 @@ export const PriceVolumeEngineCard: React.FC<PriceVolumeEngineCardProps> = () =>
           <div className="flex items-baseline justify-between pt-1">
             <div className="text-xs text-gray-400">قيمة الـ CVD الصافية:</div>
             <div className={`text-2xl font-black font-mono ${isPositiveDelta ? 'text-emerald-400' : 'text-rose-400'}`}>
-              {isPositiveDelta ? `+${(cvd?.cumulativeDelta ?? 0).toLocaleString('ar-EG')}` : (cvd?.cumulativeDelta ?? 0).toLocaleString('ar-EG')}{' '}
-              <span className="text-xs font-normal text-gray-400 font-sans">أونصة</span>
+              {cvd?.cumulativeDelta != null ? (
+                <>
+                  {isPositiveDelta ? `+${cvd.cumulativeDelta.toLocaleString('ar-EG')}` : cvd.cumulativeDelta.toLocaleString('ar-EG')}{' '}
+                  <span className="text-xs font-normal text-gray-400 font-sans">أونصة</span>
+                </>
+              ) : (
+                <span className="text-zinc-500 text-base">غير متاح (UNAVAILABLE)</span>
+              )}
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-2 text-xs font-mono pt-1">
             <div className="p-2.5 rounded-lg bg-[#141926] border border-[#20273A]">
               <div className="text-gray-400 text-[11px] mb-1">حجم الشراء العدواني (Buy):</div>
-              <div className="text-emerald-400 font-bold text-sm">+{cvd?.buyVolume?.toFixed(1)} oz</div>
+              <div className="text-emerald-400 font-bold text-sm">
+                {cvd?.buyVolume != null ? `+${cvd.buyVolume.toFixed(1)} oz` : 'غير متاح'}
+              </div>
             </div>
             <div className="p-2.5 rounded-lg bg-[#141926] border border-[#20273A]">
               <div className="text-gray-400 text-[11px] mb-1">حجم البيع العدواني (Sell):</div>
-              <div className="text-rose-400 font-bold text-sm">-{cvd?.sellVolume?.toFixed(1)} oz</div>
+              <div className="text-rose-400 font-bold text-sm">
+                {cvd?.sellVolume != null ? `-${cvd.sellVolume.toFixed(1)} oz` : 'غير متاح'}
+              </div>
             </div>
           </div>
 
           <div className="text-[11px] text-gray-400 leading-relaxed">
             المعادلة اللحظية: <code className="text-amber-300 font-mono">Delta = Sum(Buy_Volume) - Sum(Sell_Volume)</code> محسوبة فور ورود الصفقات المباشرة.
+          </div>
+
+          {/* STEP 4: CVD Disclaimer */}
+          <div className="text-[11px] text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded-lg p-2.5 leading-relaxed font-sans" dir="rtl">
+            ⚠️ CVD تقريبي — Institutional Delta Approximation.
+            <br />
+            المصدر: TradingView GC1! Volume.
           </div>
         </div>
 
@@ -374,97 +403,77 @@ export const PriceVolumeEngineCard: React.FC<PriceVolumeEngineCardProps> = () =>
           </div>
 
           <div className="text-[11px] text-gray-400 leading-relaxed border-t border-[#1E2538] pt-2">
-            المعادلة: <code className="text-purple-300 font-mono">Synced_Price = Binance_Price * Rolling_Basis_Ratio</code>
+            المعادلة: <code className="text-purple-300 font-mono">Synced_Price = TV_Futures_Price * Rolling_Basis_Ratio</code>
           </div>
         </div>
       </div>
 
-      {/* 5. Multi-Exchange Failover Network */}
+      {/* 5. Institutional Relay Network Node (Single TradingView Node) */}
       <div className="bg-[#10141E] border border-[#1E2538] rounded-xl p-4.5 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#1E2538] pb-3">
           <div className="flex items-center gap-2.5">
             <Server className="w-4 h-4 text-emerald-400" />
             <h3 className="text-sm font-bold text-white">
-              شبكة المصادر اللحظية المتعاقبة (Multi-Exchange Failover Watchdog)
+              عقدة البث المؤسساتي المباشر (TradingView Relay Node)
             </h3>
           </div>
           <span className="text-xs font-mono text-zinc-400">
-            قاعدة الأمان: تحويل تلقائي خلال 3 ثوانٍ إذا تجاوز التأخير 200ms
+            مزود البيانات الحصري: TradingView WebSocket (COMEX:GC1!)
           </span>
         </div>
 
-        {/* Exchange Nodes Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {(['BINANCE', 'BYBIT', 'OKX', 'MT5_DEMO'] as ExchangeSource[]).map((src) => {
-            const ex = exchanges?.[src] || {
-              name: src,
-              labelAr: src,
-              status: 'STANDBY',
-              latencyMs: 50,
-              lastPrice: 4478.50,
-              lastUpdated: new Date().toISOString(),
-              tradeCount: 0,
-              errorCount: 0,
-            };
-
-            const isPrimary = activePrimarySource === src;
-            const isConnected = ex.status === 'CONNECTED';
+        {/* STEP 3 & 5: Single TradingView Node */}
+        <div className="grid grid-cols-1 gap-3">
+          {(() => {
+            const isConnected = exchangeStatus.TRADINGVIEW.status === 'CONNECTED';
+            const tvDetails = (exchanges as any)?.TRADINGVIEW;
+            const latency = tvDetails?.latencyMs ?? 0;
+            const lastPrice = tvDetails?.lastPrice > 0
+              ? tvDetails.lastPrice
+              : (spotPrice > 0 ? spotPrice : mgcPrice);
+            const tradeCount = tvDetails?.tradeCount ?? (cvd?.tickCountTotal ?? 0);
 
             return (
-              <div
-                key={src}
-                className={`p-3.5 rounded-xl border transition-all ${
-                  isPrimary
-                    ? 'bg-amber-500/10 border-amber-500/50 shadow-md shadow-amber-500/5'
-                    : 'bg-[#131722] border-[#1E2538] hover:border-[#2D3748]'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                    {ex.labelAr}
+              <div className="p-4 rounded-xl border bg-amber-500/10 border-amber-500/50 shadow-md shadow-amber-500/5 transition-all">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Radio className="w-4 h-4 text-amber-400 animate-pulse" />
+                    <span className="text-sm font-bold text-white">
+                      تريدنج فيو (TradingView COMEX:GC1!)
+                    </span>
+                  </div>
+                  <span className="text-xs font-mono font-bold px-2.5 py-0.5 rounded bg-amber-500 text-black">
+                    المصدر المؤسساتي النشط (Primary Feed)
                   </span>
-                  {isPrimary && (
-                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-amber-500 text-black">
-                      المصدر النشط
-                    </span>
-                  )}
                 </div>
 
-                <div className="space-y-1.5 font-mono text-xs">
-                  <div className="flex items-center justify-between text-gray-400">
-                    <span>الحالة:</span>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 font-mono text-xs">
+                  <div className="p-2.5 rounded-lg bg-[#141926] border border-[#20273A]">
+                    <span className="text-gray-400 block text-[11px] mb-1">الحالة:</span>
                     <span className={`font-bold ${isConnected ? 'text-emerald-400' : 'text-zinc-500'}`}>
-                      {isConnected ? 'متصل (Active 🟢)' : ex.status === 'RECONNECTING' ? 'إعادة ربط 🟡' : 'استعداد ⚪'}
+                      {isConnected ? 'متصل (Active 🟢)' : 'استعداد ⚪'}
                     </span>
                   </div>
-                  <div className="flex items-center justify-between text-gray-400">
-                    <span>التأخير (Latency):</span>
-                    <span className={`font-bold ${ex.latencyMs <= 100 ? 'text-emerald-400' : ex.latencyMs <= 200 ? 'text-amber-400' : 'text-rose-400'}`}>
-                      {ex.latencyMs} ms
+                  <div className="p-2.5 rounded-lg bg-[#141926] border border-[#20273A]">
+                    <span className="text-gray-400 block text-[11px] mb-1">التأخير (Latency):</span>
+                    <span className={`font-bold ${latency > 0 && latency <= 100 ? 'text-emerald-400' : latency <= 200 ? 'text-amber-400' : 'text-zinc-400'}`}>
+                      {latency > 0 ? `${latency} ms` : 'مباشر (Real-time)'}
                     </span>
                   </div>
-                  <div className="flex items-center justify-between text-gray-400">
-                    <span>آخر سعر مستلم:</span>
-                    <span className="font-bold text-white">${ex.lastPrice?.toFixed(2)}</span>
+                  <div className="p-2.5 rounded-lg bg-[#141926] border border-[#20273A]">
+                    <span className="text-gray-400 block text-[11px] mb-1">آخر سعر مستلم:</span>
+                    <span className="font-bold text-white">
+                      {lastPrice > 0 ? `$${lastPrice.toFixed(2)}` : 'غير متاح (UNAVAILABLE)'}
+                    </span>
                   </div>
-                  <div className="flex items-center justify-between text-gray-400">
-                    <span>عدد التكات:</span>
-                    <span className="text-zinc-300">{ex.tradeCount}</span>
+                  <div className="p-2.5 rounded-lg bg-[#141926] border border-[#20273A]">
+                    <span className="text-gray-400 block text-[11px] mb-1">عدد التكات المستلمة:</span>
+                    <span className="text-cyan-400 font-bold">{tradeCount.toLocaleString('ar-EG')}</span>
                   </div>
                 </div>
-
-                {!isPrimary && (
-                  <button
-                    onClick={() => handleManualSwitch(src)}
-                    disabled={isSwitching}
-                    className="w-full mt-3 py-1.5 rounded-lg bg-[#1B2030] hover:bg-[#252C42] text-[11px] font-mono font-semibold text-zinc-300 border border-[#273048] transition active:scale-95 disabled:opacity-50"
-                  >
-                    تفعيل كمصدر نشط
-                  </button>
-                )}
               </div>
             );
-          })}
+          })()}
         </div>
 
         {/* Failover Events Log */}
@@ -489,24 +498,26 @@ export const PriceVolumeEngineCard: React.FC<PriceVolumeEngineCardProps> = () =>
         )}
       </div>
 
-      {/* 6. MGC Volume & Value Engine (VWAP, PoC, Value Area 70%) */}
+      {/* 6. TradingView GC1! Volume & Value Engine (VWAP, PoC, Value Area 70%) */}
       <div className="bg-[#10141E] border border-[#1E2538] rounded-xl p-4.5 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#1E2538] pb-3">
           <div className="flex items-center gap-2.5">
             <BarChart3 className="w-4 h-4 text-blue-400" />
             <div>
               <h3 className="text-sm font-bold text-white">
-                محرك الأحجام والقيمة المؤسسية (MGC Volume & Value Engine)
+                محرك الأحجام والقيمة المؤسسية (TradingView GC1! Volume & Value Engine)
               </h3>
               <p className="text-[11px] text-gray-400 mt-0.5">
-                سحب عقود MGC=F من ياهو فاينانس مع مضاعفة الحجم (*10) للمعايرة مع GC الكامل وحساب Anchored VWAP و PoC كل 5 دقائق
+                بيانات عقود COMEX:GC1! المباشرة من TradingView مع حساب Anchored VWAP و PoC كل 5 دقائق
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2 text-xs font-mono">
             <span className="px-2.5 py-1 rounded bg-[#151926] border border-blue-500/30 text-blue-300">
-              حجم GC المعاير: {(volumeValueEngine?.gcCalibratedVolume ?? 257300).toLocaleString('ar-EG')} عقد
+              حجم GC1! المؤسساتي: {volumeValueEngine?.gcCalibratedVolume != null && volumeValueEngine.gcCalibratedVolume > 0
+                ? `${volumeValueEngine.gcCalibratedVolume.toLocaleString('ar-EG')} عقد`
+                : 'غير متاح (UNAVAILABLE)'}
             </span>
           </div>
         </div>
@@ -514,9 +525,11 @@ export const PriceVolumeEngineCard: React.FC<PriceVolumeEngineCardProps> = () =>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {/* Anchored VWAP */}
           <div className="p-3 rounded-lg bg-[#141926] border border-[#20273A]">
-            <div className="text-[11px] text-gray-400 mb-1">Anchored VWAP (حجم MGC*10):</div>
+            <div className="text-[11px] text-gray-400 mb-1">Anchored VWAP (حجم TradingView GC1!):</div>
             <div className="text-lg font-black font-mono text-cyan-400">
-              ${(volumeValueEngine?.anchoredVWAP ?? 4464.8).toFixed(2)}
+              {volumeValueEngine?.anchoredVWAP != null && volumeValueEngine.anchoredVWAP > 0
+                ? `$${volumeValueEngine.anchoredVWAP.toFixed(2)}`
+                : 'غير متاح (UNAVAILABLE)'}
             </div>
             <div className="text-[10px] text-zinc-400 mt-1">المحور السعري الحجمي للجلسة</div>
           </div>
@@ -525,10 +538,14 @@ export const PriceVolumeEngineCard: React.FC<PriceVolumeEngineCardProps> = () =>
           <div className="p-3 rounded-lg bg-[#141926] border border-[#20273A]">
             <div className="text-[11px] text-gray-400 mb-1">نقطة التحكم السعرية (PoC):</div>
             <div className="text-lg font-black font-mono text-amber-400">
-              ${(volumeValueEngine?.pocPrice ?? 4466.5).toFixed(2)}
+              {volumeValueEngine?.pocPrice != null && volumeValueEngine.pocPrice > 0
+                ? `$${volumeValueEngine.pocPrice.toFixed(2)}`
+                : 'غير متاح (UNAVAILABLE)'}
             </div>
             <div className="text-[10px] text-zinc-400 mt-1">
-              حجم الذروة: {(volumeValueEngine?.pocVolume ?? 48200).toLocaleString('ar-EG')} عقد
+              حجم الذروة: {volumeValueEngine?.pocVolume != null && volumeValueEngine.pocVolume > 0
+                ? `${volumeValueEngine.pocVolume.toLocaleString('ar-EG')} عقد`
+                : 'غير متاح (UNAVAILABLE)'}
             </div>
           </div>
 
@@ -536,7 +553,9 @@ export const PriceVolumeEngineCard: React.FC<PriceVolumeEngineCardProps> = () =>
           <div className="p-3 rounded-lg bg-[#141926] border border-[#20273A]">
             <div className="text-[11px] text-gray-400 mb-1">أعلى منطقة القيمة (VAH 70%):</div>
             <div className="text-lg font-black font-mono text-emerald-400">
-              ${volumeValueEngine?.vahPrice?.toFixed(2)}
+              {volumeValueEngine?.vahPrice != null && volumeValueEngine.vahPrice > 0
+                ? `$${volumeValueEngine.vahPrice.toFixed(2)}`
+                : 'غير متاح (UNAVAILABLE)'}
             </div>
             <div className="text-[10px] text-zinc-400 mt-1">حد المقاومة الحجمية العلوية</div>
           </div>
@@ -545,7 +564,9 @@ export const PriceVolumeEngineCard: React.FC<PriceVolumeEngineCardProps> = () =>
           <div className="p-3 rounded-lg bg-[#141926] border border-[#20273A]">
             <div className="text-[11px] text-gray-400 mb-1">أدنى منطقة القيمة (VAL 70%):</div>
             <div className="text-lg font-black font-mono text-rose-400">
-              ${volumeValueEngine?.valPrice?.toFixed(2)}
+              {volumeValueEngine?.valPrice != null && volumeValueEngine.valPrice > 0
+                ? `$${volumeValueEngine.valPrice.toFixed(2)}`
+                : 'غير متاح (UNAVAILABLE)'}
             </div>
             <div className="text-[10px] text-zinc-400 mt-1">حد الدعم الحجمي السفلي</div>
           </div>

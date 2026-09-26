@@ -331,7 +331,7 @@ export interface RepoFile {
 // =========================================================================
 // Price & Volume Data Engine Interfaces (Institutional Architecture)
 // =========================================================================
-export type ExchangeSource = 'BINANCE' | 'BYBIT' | 'OKX' | 'MT5_DEMO';
+export type ExchangeSource = 'TRADINGVIEW';
 
 export interface ExchangeStatus {
   name: ExchangeSource;
@@ -368,7 +368,7 @@ export interface RealtimeCVDMetrics {
 
 export interface RollingBasisCalibration {
   mgcPrice: number;
-  binancePrice: number;
+  spotPrice: number;
   rollingBasisRatio: number;
   syncedPrice: number;
   divergencePct: number;
@@ -419,7 +419,7 @@ export interface PriceVolumeEngineState {
   activePrimarySource: ExchangeSource;
   medianPrice: number;
   syncedPrice: number;
-  binancePrice: number;
+  spotPrice: number;
   mgcPrice: number;
   basisSpread: number;
   exchanges: Record<ExchangeSource, ExchangeStatus>;
@@ -477,8 +477,7 @@ export type ChartTimeframe =
   | '1h'
   | '4h'
   | '1d'
-  | '1w'
-  | '1M';
+  | '1w';
 
 export interface CandleData {
   time: number; // Unix timestamp in seconds

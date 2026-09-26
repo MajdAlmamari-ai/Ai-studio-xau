@@ -7,12 +7,13 @@ import {
   FairValueGap, 
   OrderBlockDetail 
 } from '../types';
-import { fetchGateIoCandlesticks } from './gateIoService';
 import { runRealSMCEngine } from '../engine/engine';
 import { convertRealAnalysisToSMC } from './smcEngineAdapter';
 import { fetchTvHistory } from './tvHistoryClient';
 import { candleToNormalized, NormalizedCandle } from '../types/sharedTypes';
 import type { Regime, ConfluenceResult } from '../engine/types';
+import { PriceSourceEnforcer, DataUnavailableError } from '../engine/enforcer/PriceSourceEnforcer';
+import type { FuturesCandle } from '../engine/types/branded';
 
 export function mapRegimeToBias(regime: Regime): MarketBias {
   switch (regime) {
@@ -43,7 +44,7 @@ export function mapRegimeToStructure(regime: Regime): MarketStructure {
 function generateFallbackCandles(price: number, count = 60): NormalizedCandle[] {
   const baseTime = Math.floor(Date.now() / 1000) - count * 900;
   return Array.from({ length: count }, (_, i) => {
-    const wave = Math.sin(i * 0.3) * 2;
+    const wave = ((i % 5) - 2) * 0.5;
     const o = Number((price - 5 + wave).toFixed(2));
     const h = Number((o + 2.5).toFixed(2));
     const l = Number((o - 2.5).toFixed(2));
@@ -492,43 +493,40 @@ export async function calculateSMC(
   price: number | null,
   config: SMCConfig = DEFAULT_SMC_CONFIG,
 ): Promise<SMCAnalysis> {
+  // 1. Fetch REAL institutional candles for COMEX GC1! from TradingView relay
+  let tvResult;
   try {
-    // 1. Fetch REAL institutional candles for COMEX GC1! from TradingView relay
-    let candles: NormalizedCandle[] | null = null;
-    try {
-      const tvResult = await fetchTvHistory({
-        key: 'futures',
-        timeframe: '15m',
-        barCount: 200,
-      });
-      if (tvResult.ok && tvResult.candles.length >= 30) {
-        candles = tvResult.candles.map(candleToNormalized);
-      }
-    } catch (tvErr) {
-      console.warn('[smcEngine] TV history fetch warning:', tvErr);
-    }
-
-    // Secondary fallback: Gate.io candles
-    if (!candles || candles.length < 30) {
-      const gateCandles = await fetchGateIoCandlesticks('futures', '15m', 200).catch(() => null);
-      if (gateCandles && gateCandles.length >= 30) {
-        candles = gateCandles;
-      }
-    }
-
-    if (!candles || candles.length < 30) {
-      return calculateSMCFallback(price, config);
-    }
-
-    // 2. Run REAL engine on COMEX GC1! candles
-    const real = runRealSMCEngine(candles);
-
-    // 3. Convert to legacy SMCAnalysis
-    return convertRealAnalysisToSMC(real, config);
-  } catch (err) {
-    // Fallback on any network/API error
-    return calculateSMCFallback(price, config);
+    tvResult = await fetchTvHistory({
+      key: 'futures',
+      timeframe: '15m',
+      barCount: 200,
+    });
+  } catch (err: any) {
+    throw new DataUnavailableError('TV_FETCH_FAILED', `TradingView history fetch failed: ${err?.message || err}`);
   }
+
+  if (!tvResult.ok || !tvResult.candles || tvResult.candles.length < 30) {
+    throw new DataUnavailableError('TV_FUTURES_UNAVAILABLE', 'Insufficient COMEX:GC1! history from TradingView');
+  }
+
+  // Enforce FuturesCandle branded types via PriceSourceEnforcer
+  const futuresCandles: FuturesCandle[] = tvResult.candles.map((c) =>
+    PriceSourceEnforcer.enforceFutures({
+      time: c.time,
+      open: c.open,
+      high: c.high,
+      low: c.low,
+      close: c.close,
+      volume: c.volume ?? 0,
+      source: 'FUTURES',
+    })
+  );
+
+  // 2. Run REAL engine on COMEX GC1! candles
+  const real = runRealSMCEngine(futuresCandles);
+
+  // 3. Convert to legacy SMCAnalysis
+  return convertRealAnalysisToSMC(real, config);
 }
 
 /**

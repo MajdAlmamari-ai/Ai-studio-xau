@@ -26,6 +26,7 @@ import {
   RealSMCAnalysis,
   DEFAULT_ENGINE_CONFIG,
 } from './types';
+import type { FuturesCandle } from './types/branded';
 
 /**
  * Run the full SMC analysis pipeline.
@@ -36,7 +37,7 @@ import {
  * @returns Unified RealSMCAnalysis.
  */
 export function runRealSMCEngine(
-  candles: ReadonlyArray<NormalizedCandle>,
+  candles: ReadonlyArray<NormalizedCandle | FuturesCandle>,
   asOfIndex?: number,
   config: EngineConfig = DEFAULT_ENGINE_CONFIG,
 ): RealSMCAnalysis {

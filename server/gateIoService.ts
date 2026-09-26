@@ -515,7 +515,7 @@ export async function fetchGateIoSpotTrades(
   let sellVolume = 0;
   let totalVolume = 0;
 
-  const trades: GateIoSpotTradeItem[] = rawTrades.map((t) => {
+  const trades: GateIoSpotTradeItem[] = rawTrades.map((t, idx) => {
     const time = parseInt(t.create_time, 10);
     const date = new Date(time * 1000);
     const side = (t.side === 'buy' ? 'buy' : 'sell') as 'buy' | 'sell';
@@ -531,7 +531,7 @@ export async function fetchGateIoSpotTrades(
     totalVolume += amount;
 
     return {
-      id: String(t.id || t.sequence_id || Math.random()),
+      id: String(t.id || t.sequence_id || `${Date.now()}_${idx}`),
       createTime: time,
       timeFormatted: `${date.getUTCHours().toString().padStart(2, '0')}:${date.getUTCMinutes().toString().padStart(2, '0')}:${date.getUTCSeconds().toString().padStart(2, '0')}`,
       side,

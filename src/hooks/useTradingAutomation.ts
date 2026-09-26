@@ -7,6 +7,8 @@ import { formatTelegramReport, sendTelegramMessage } from '../services/telegramS
 import { saveSignalToFirestore, saveExecutionLogToFirestore } from '../services/firestoreService';
 
 const FIFTEEN_MINUTES_SECS = 15 * 60;
+let logIdSeq = 0;
+const getLogId = () => `auto-${Date.now()}-${++logIdSeq}`;
 
 export function useTradingAutomation(
   smcConfig: SMCConfig,
@@ -68,7 +70,7 @@ export function useTradingAutomation(
     // Step 1: Data Ingestion
     setLogs((prev) => [
       {
-        id: Math.random().toString(),
+        id: getLogId(),
         timestamp: now(),
         step: 'جمع البيانات',
         status: 'pending',
@@ -88,7 +90,7 @@ export function useTradingAutomation(
 
       setLogs((prev) => [
         {
-          id: Math.random().toString(),
+          id: getLogId(),
           timestamp: now(),
           step: 'جمع البيانات',
           status: 'success',
@@ -99,7 +101,7 @@ export function useTradingAutomation(
     } catch (e) {
       setLogs((prev) => [
         {
-          id: Math.random().toString(),
+          id: getLogId(),
           timestamp: now(),
           step: 'جمع البيانات',
           status: 'warning',
@@ -113,7 +115,7 @@ export function useTradingAutomation(
     const freshAnalysis = await calculateSMC(currentSpot, smcConfig);
     setLogs((prev) => [
       {
-        id: Math.random().toString(),
+        id: getLogId(),
         timestamp: now(),
         step: 'التحليل الهيكلي',
         status: 'success',
@@ -129,7 +131,7 @@ export function useTradingAutomation(
 
     setLogs((prev) => [
       {
-        id: Math.random().toString(),
+        id: getLogId(),
         timestamp: now(),
         step: 'توليد التوصية',
         status: 'success',
@@ -144,7 +146,7 @@ export function useTradingAutomation(
       if (dispatchResult.success) {
         setLogs((prev) => [
           {
-            id: Math.random().toString(),
+            id: getLogId(),
             timestamp: now(),
             step: 'البث لتيليجرام',
             status: 'success',
@@ -155,7 +157,7 @@ export function useTradingAutomation(
       } else {
         setLogs((prev) => [
           {
-            id: Math.random().toString(),
+            id: getLogId(),
             timestamp: now(),
             step: 'البث لتيليجرام',
             status: 'error',
@@ -167,7 +169,7 @@ export function useTradingAutomation(
     } else {
       setLogs((prev) => [
         {
-          id: Math.random().toString(),
+          id: getLogId(),
           timestamp: now(),
           step: 'البث لتيليجرام',
           status: 'warning',
@@ -200,7 +202,7 @@ export function useTradingAutomation(
     setLogs((prev) => [
       {
         ...log,
-        id: Math.random().toString(),
+        id: getLogId(),
         timestamp: new Date().toLocaleTimeString('ar-EG'),
       },
       ...prev,

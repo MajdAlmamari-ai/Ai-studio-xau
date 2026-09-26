@@ -60,7 +60,10 @@ import { getCandlesForTimeframe, ChartTimeframe } from './server/candlesService'
 import { calculateMultiTimeframeSMC } from './server/multiTimeframeEngine';
 import { logger } from './server/loggerService';
 import { tvRouter } from './server/tvRouter';
+import { apiRouter } from './server/api/routes';
 import { getTvRelay } from './server/tvRelay';
+import { getTvLiveUpdater } from './server/tvLiveUpdater';
+import { runInitialBackfill } from './server/backfillService';
 
 dotenv.config();
 
@@ -114,6 +117,9 @@ app.get('/api/health', (req, res) => {
 
 // TradingView Relay REST Endpoints
 app.use('/api/tv', tvRouter);
+
+// Core Gold API Endpoints (Candles, Spot Analysis)
+app.use('/api', apiRouter);
 
 // 1. Live Gold Spot & Futures Pricing
 app.get(['/api/price', '/api/gold/spot'], async (req, res) => {
@@ -300,9 +306,24 @@ app.get(['/api/gold/candles', '/api/candles'], async (req, res) => {
       : '4H';
 
     const livePriceOverride = req.query.currentPrice ? Number(req.query.currentPrice) : undefined;
+    const requestedCount = req.query.limit ? Number(req.query.limit) : 50;
+
     const candlesData = await getCandlesForTimeframe(validTf, livePriceOverride);
+    const candleCount = candlesData?.candles?.length || 0;
+
+    let quality: 'FULL' | 'PARTIAL' | 'MISSING' = 'MISSING';
+    if (candleCount === 0) {
+      quality = 'MISSING';
+    } else if (candleCount >= requestedCount || candleCount >= 50) {
+      quality = 'FULL';
+    } else {
+      quality = 'PARTIAL';
+    }
+
+    res.setHeader('X-Data-Quality', quality);
     res.json(candlesData);
   } catch (err: any) {
+    res.setHeader('X-Data-Quality', 'MISSING');
     res.status(500).json({ error: err.message || 'Failed to fetch candlestick data' });
   }
 });
@@ -990,13 +1011,27 @@ async function startServer() {
   // Start the background 15-minute institutional scheduler
   startServerScheduler();
 
-  // Start the persistent TradingView Relay WebSocket
+  // Start the persistent TradingView Relay WebSocket & Live Updater
   try {
     const tvRelay = getTvRelay();
     tvRelay.start();
     logger.info('WEBSOCKET', 'TradingView WebSocket Relay started');
+
+    const liveUpdater = getTvLiveUpdater();
+    liveUpdater.start();
+    logger.info('WEBSOCKET', 'TradingView Live Candle Updater started');
+
+    // Run Initial Historical Backfill asynchronously without blocking server start
+    logger.info('WEBSOCKET', 'Initiating background historical backfill on server boot...');
+    runInitialBackfill()
+      .then((summaries) => {
+        logger.info('WEBSOCKET', `Background historical backfill completed. Total timeframes evaluated: ${summaries.length}`);
+      })
+      .catch((err) => {
+        logger.error('WEBSOCKET', `Background historical backfill error: ${err?.message || err}`);
+      });
   } catch (err: any) {
-    logger.error('WEBSOCKET', `Failed to start TV Relay: ${err?.message || err}`);
+    logger.error('WEBSOCKET', `Failed to start TV Relay or LiveUpdater: ${err?.message || err}`);
   }
 
   if (process.env.NODE_ENV !== 'production') {
