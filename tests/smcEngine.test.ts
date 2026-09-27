@@ -6,7 +6,6 @@ import assert from 'node:assert/strict';
 import { 
   calculateSMCBackend, 
   calculateOBZoneFreshness, 
-  scanProximityZones,
   DEFAULT_SERVER_SMC_CONFIG 
 } from '../server/smcQuantService';
 
@@ -45,23 +44,6 @@ test('SMC Quant Engine - Core Institutional Calculations', async (t) => {
     const breached = calculateOBZoneFreshness(22, 'Breached');
     assert.strictEqual(breached.score, 0);
     assert.strictEqual(breached.tier, 'ERODED');
-  });
-
-  await t.test('scans proximity alerts within <= $2.0 threshold', () => {
-    const spot = 4410.0;
-    const mockOBs = [
-      {
-        id: 'ob-1',
-        type: 'BULLISH_DEMAND',
-        min: 4409.0,
-        max: 4411.0,
-      }
-    ];
-
-    const proximity = scanProximityZones(spot, mockOBs, []);
-    assert.strictEqual(proximity.isUnderAlert, true, 'Should trigger alert when price is inside/near zone');
-    assert.ok(proximity.nearestDistance <= 2.0, 'Distance must be <= 2.0');
-    assert.ok(proximity.alerts.length > 0, 'Alerts array should contain detected zone');
   });
 
   await t.test('validates Wick Protection & ATR Spring Coil compression logic', () => {

@@ -110,7 +110,7 @@ export const Header: React.FC<HeaderProps> = ({
     { id: 'volume_flow', label: 'حجم CME والأوردر فلو', icon: <BarChart2 className="w-3.5 h-3.5" />, badge: 'دلتا/GC', category: 'institutional' },
     { id: 'news_sweep', label: 'سحب سيولة الأخبار', icon: <Flame className="w-3.5 h-3.5" />, badge: '15 دقيقة', category: 'institutional' },
     { id: 'compression_wick', label: 'الضغط وفلتر الذيول', icon: <Gauge className="w-3.5 h-3.5" />, badge: 'حماية الوقف', category: 'institutional' },
-    { id: 'scanner', label: 'الماسح اللحظي (Radar)', icon: <Radar className="w-3.5 h-3.5" />, badge: '≤ 2.0$', category: 'institutional' },
+    { id: 'scanner', label: 'خريطة السيولة اللحظية (Liquidity)', icon: <Radar className="w-3.5 h-3.5" />, badge: 'BSL / SSL', category: 'institutional' },
     { id: 'journal', label: 'سجل الشفافية والذاكرة', icon: <History className="w-3.5 h-3.5" />, badge: 'ذاكرة السوق', category: 'institutional' },
     
     // 3. AI & Forecasting

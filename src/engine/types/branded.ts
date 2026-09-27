@@ -1,7 +1,12 @@
 /**
- * Branded Types — Spot vs Futures
+ * Branded Types for Price Source Safety
  * 
- * Compile-time protection against mixing Spot and Futures data.
+ * Prevents Spot/Futures mixing at compile-time.
+ * 
+ * NO FAKE DATA:
+ * - Pure type definitions
+ * - No runtime values
+ * - No hardcoded numbers
  */
 
 declare const SpotBrand: unique symbol;
@@ -38,6 +43,8 @@ export interface FuturesCandle {
   openInterest?: number;
   source: 'FUTURES';
 }
+
+export type PriceSource = 'SPOT' | 'FUTURES';
 
 export function isSpotCandle(candle: unknown): candle is SpotCandle {
   return (

@@ -28,6 +28,53 @@ CREATE INDEX IF NOT EXISTS idx_candles_source
   ON candles(source);
 
 -- ============================================================
+-- SPOT CANDLES TABLE (Dedicated OANDA:XAUUSD)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS spot_candles (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  symbol TEXT NOT NULL DEFAULT 'OANDA:XAUUSD',
+  timeframe TEXT NOT NULL,
+  open_time INTEGER NOT NULL,
+  close_time INTEGER NOT NULL,
+  open REAL NOT NULL,
+  high REAL NOT NULL,
+  low REAL NOT NULL,
+  close REAL NOT NULL,
+  volume REAL,
+  is_closed INTEGER NOT NULL DEFAULT 1,
+  ingested_at INTEGER NOT NULL,
+  UNIQUE(symbol, timeframe, open_time)
+);
+
+CREATE INDEX IF NOT EXISTS idx_spot_candles_lookup
+  ON spot_candles(symbol, timeframe, open_time DESC);
+
+-- ============================================================
+-- FUTURES CANDLES TABLE (Dedicated COMEX:GC1!)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS futures_candles (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  symbol TEXT NOT NULL DEFAULT 'COMEX:GC1!',
+  timeframe TEXT NOT NULL,
+  open_time INTEGER NOT NULL,
+  close_time INTEGER NOT NULL,
+  open REAL NOT NULL,
+  high REAL NOT NULL,
+  low REAL NOT NULL,
+  close REAL NOT NULL,
+  volume REAL,
+  open_interest REAL,
+  is_closed INTEGER NOT NULL DEFAULT 1,
+  ingested_at INTEGER NOT NULL,
+  UNIQUE(symbol, timeframe, open_time)
+);
+
+CREATE INDEX IF NOT EXISTS idx_futures_candles_lookup
+  ON futures_candles(symbol, timeframe, open_time DESC);
+
+-- ============================================================
 -- FETCH STATE TABLE
 -- Tracks the last fetched bar per (symbol, timeframe)
 -- ============================================================

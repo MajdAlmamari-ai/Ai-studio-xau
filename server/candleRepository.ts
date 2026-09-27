@@ -38,6 +38,16 @@ export type CandleSource = 'SPOT' | 'FUTURES' | 'UNKNOWN';
 export type SupportedSymbol = 'OANDA:XAUUSD' | 'COMEX:GC1!';
 export type CandleDataType = 'SPOT' | 'FUTURES';
 
+export interface RawCandle {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number | null;
+  openInterest?: number | null;
+}
+
 export interface CandleRecord {
   symbol: string;
   timeframe: Timeframe | string;
@@ -186,10 +196,29 @@ export class CandleRepository {
   // ACTION 6.2: Spot & Futures Dedicated Methods
   // ---------------------------------------------------------------------------------------
 
-  getSpotCandles(timeframe: string, limit: number): SpotCandle[] {
+  getSpotCandles(timeframe: string, limit?: number): SpotCandle[];
+  getSpotCandles(symbol: string, timeframe: string, limit: number): CandleRecord[];
+  getSpotCandles(arg1: string, arg2?: string | number, arg3?: number): SpotCandle[] | CandleRecord[] {
+    let timeframe: string;
+    let limit: number;
+    let isSymbolCall = false;
+    let symbol = 'OANDA:XAUUSD';
+
+    if (typeof arg2 === 'string') {
+      // getSpotCandles(symbol, timeframe, limit)
+      symbol = arg1;
+      timeframe = arg2;
+      limit = typeof arg3 === 'number' ? arg3 : 100;
+      isSymbolCall = true;
+    } else {
+      // getSpotCandles(timeframe, limit)
+      timeframe = arg1;
+      limit = typeof arg2 === 'number' ? arg2 : 100;
+    }
+
     const canonicalTf = normalizeToCanonicalTimeframe(timeframe);
     const stmt = this.db.prepare(`
-      SELECT time, open, high, low, close, volume, source
+      SELECT time, open, high, low, close, volume, source, ingested_at
       FROM spot_candles
       WHERE timeframe = ?
       ORDER BY time DESC
@@ -203,8 +232,36 @@ export class CandleRepository {
       close: number;
       volume: number | null;
       source: string;
+      ingested_at: number;
     }>;
     const result = rows.reverse();
+
+    if (isSymbolCall) {
+      return result.map((r) => {
+        const spot = PriceSourceEnforcer.enforceSpot({
+          time: r.time,
+          open: r.open,
+          high: r.high,
+          low: r.low,
+          close: r.close,
+          volume: r.volume ?? 0,
+          source: 'SPOT',
+        });
+        return {
+          symbol,
+          timeframe: canonicalTf,
+          time: spot.time,
+          open: spot.open,
+          high: spot.high,
+          low: spot.low,
+          close: spot.close,
+          volume: spot.volume,
+          source: 'SPOT',
+          ingested_at: r.ingested_at || Date.now(),
+        };
+      });
+    }
+
     return result.map((r) =>
       PriceSourceEnforcer.enforceSpot({
         time: r.time,
@@ -218,23 +275,38 @@ export class CandleRepository {
     );
   }
 
+  saveSpotCandles(timeframe: string, candles: RawCandle[] | Array<{ time: number; open: number; high: number; low: number; close: number; volume: number }>): number;
+  saveSpotCandles(symbol: string, timeframe: string, candles: RawCandle[]): number;
   saveSpotCandles(
-    timeframe: string,
-    candles: Array<{
-      time: number;
-      open: number;
-      high: number;
-      low: number;
-      close: number;
-      volume: number;
-    }>
-  ): void {
-    if (candles.length === 0) return;
+    arg1: string,
+    arg2: string | RawCandle[] | Array<{ time: number; open: number; high: number; low: number; close: number; volume: number }>,
+    arg3?: RawCandle[]
+  ): number {
+    let timeframe: string;
+    let candles: RawCandle[] | Array<{ time: number; open: number; high: number; low: number; close: number; volume: number }>;
+
+    if (typeof arg2 === 'string') {
+      timeframe = arg2;
+      candles = arg3 || [];
+    } else {
+      timeframe = arg1;
+      candles = arg2 || [];
+    }
+
+    if (candles.length === 0) return 0;
     const canonicalTf = normalizeToCanonicalTimeframe(timeframe);
     const now = Date.now();
 
     for (const c of candles) {
-      PriceSourceEnforcer.enforceSpot({ ...c, source: 'SPOT' });
+      PriceSourceEnforcer.enforceSpot({
+        time: c.time,
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+        volume: c.volume ?? 0,
+        source: 'SPOT',
+      });
     }
 
     const stmtSpot = this.db.prepare(`
@@ -252,17 +324,42 @@ export class CandleRepository {
 
     const tx = this.db.transaction((items: typeof candles) => {
       for (const c of items) {
-        stmtSpot.run(canonicalTf, c.time, c.open, c.high, c.low, c.close, c.volume, now);
+        stmtSpot.run(canonicalTf, c.time, c.open, c.high, c.low, c.close, c.volume ?? 0, now);
       }
     });
 
     tx(candles);
+    return candles.length;
   }
 
-  getFuturesCandles(timeframe: string, limit: number): FuturesCandle[] {
+  countSpotCandles(symbolOrTf: string, tf?: string): number {
+    const timeframe = tf || symbolOrTf;
+    return this.count('SPOT', timeframe);
+  }
+
+  getFuturesCandles(timeframe: string, limit?: number): FuturesCandle[];
+  getFuturesCandles(symbol: string, timeframe: string, limit: number): CandleRecord[];
+  getFuturesCandles(arg1: string, arg2?: string | number, arg3?: number): FuturesCandle[] | CandleRecord[] {
+    let timeframe: string;
+    let limit: number;
+    let isSymbolCall = false;
+    let symbol = 'COMEX:GC1!';
+
+    if (typeof arg2 === 'string') {
+      // getFuturesCandles(symbol, timeframe, limit)
+      symbol = arg1;
+      timeframe = arg2;
+      limit = typeof arg3 === 'number' ? arg3 : 100;
+      isSymbolCall = true;
+    } else {
+      // getFuturesCandles(timeframe, limit)
+      timeframe = arg1;
+      limit = typeof arg2 === 'number' ? arg2 : 100;
+    }
+
     const canonicalTf = normalizeToCanonicalTimeframe(timeframe);
     const stmt = this.db.prepare(`
-      SELECT time, open, high, low, close, volume, open_interest as openInterest, source
+      SELECT time, open, high, low, close, volume, open_interest as openInterest, source, ingested_at
       FROM futures_candles
       WHERE timeframe = ?
       ORDER BY time DESC
@@ -277,8 +374,37 @@ export class CandleRepository {
       volume: number | null;
       openInterest?: number | null;
       source: string;
+      ingested_at: number;
     }>;
     const result = rows.reverse();
+
+    if (isSymbolCall) {
+      return result.map((r) => {
+        const futures = PriceSourceEnforcer.enforceFutures({
+          time: r.time,
+          open: r.open,
+          high: r.high,
+          low: r.low,
+          close: r.close,
+          volume: r.volume ?? 0,
+          openInterest: r.openInterest ?? undefined,
+          source: 'FUTURES',
+        });
+        return {
+          symbol,
+          timeframe: canonicalTf,
+          time: futures.time,
+          open: futures.open,
+          high: futures.high,
+          low: futures.low,
+          close: futures.close,
+          volume: futures.volume,
+          source: 'FUTURES',
+          ingested_at: r.ingested_at || Date.now(),
+        };
+      });
+    }
+
     return result.map((r) =>
       PriceSourceEnforcer.enforceFutures({
         time: r.time,
@@ -293,24 +419,39 @@ export class CandleRepository {
     );
   }
 
+  saveFuturesCandles(timeframe: string, candles: RawCandle[] | Array<{ time: number; open: number; high: number; low: number; close: number; volume: number; openInterest?: number }>): number;
+  saveFuturesCandles(symbol: string, timeframe: string, candles: RawCandle[]): number;
   saveFuturesCandles(
-    timeframe: string,
-    candles: Array<{
-      time: number;
-      open: number;
-      high: number;
-      low: number;
-      close: number;
-      volume: number;
-      openInterest?: number;
-    }>
-  ): void {
-    if (candles.length === 0) return;
+    arg1: string,
+    arg2: string | RawCandle[] | Array<{ time: number; open: number; high: number; low: number; close: number; volume: number; openInterest?: number }>,
+    arg3?: RawCandle[]
+  ): number {
+    let timeframe: string;
+    let candles: RawCandle[] | Array<{ time: number; open: number; high: number; low: number; close: number; volume: number; openInterest?: number }>;
+
+    if (typeof arg2 === 'string') {
+      timeframe = arg2;
+      candles = arg3 || [];
+    } else {
+      timeframe = arg1;
+      candles = arg2 || [];
+    }
+
+    if (candles.length === 0) return 0;
     const canonicalTf = normalizeToCanonicalTimeframe(timeframe);
     const now = Date.now();
 
     for (const c of candles) {
-      PriceSourceEnforcer.enforceFutures({ ...c, source: 'FUTURES' });
+      PriceSourceEnforcer.enforceFutures({
+        time: c.time,
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+        volume: c.volume ?? 0,
+        openInterest: c.openInterest ?? undefined,
+        source: 'FUTURES',
+      });
     }
 
     const stmtFutures = this.db.prepare(`
@@ -329,11 +470,17 @@ export class CandleRepository {
 
     const tx = this.db.transaction((items: typeof candles) => {
       for (const c of items) {
-        stmtFutures.run(canonicalTf, c.time, c.open, c.high, c.low, c.close, c.volume, c.openInterest ?? null, now);
+        stmtFutures.run(canonicalTf, c.time, c.open, c.high, c.low, c.close, c.volume ?? 0, c.openInterest ?? null, now);
       }
     });
 
     tx(candles);
+    return candles.length;
+  }
+
+  countFuturesCandles(symbolOrTf: string, tf?: string): number {
+    const timeframe = tf || symbolOrTf;
+    return this.count('FUTURES', timeframe);
   }
 
   // ---------------------------------------------------------------------------------------

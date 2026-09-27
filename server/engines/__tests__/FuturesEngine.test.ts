@@ -2,19 +2,19 @@
  * Unit Tests for FuturesEngine
  * -----------------------------------------------------------------------------
  * Tests:
- * - analyze() throws if insufficient candles (< 30)
- * - calculateATR() works with real data
- * - calculateVWAP() works with real data
- * - calculateCVD() uses Institutional Delta
- * - analyzeSessions() returns correct sessions
- * - enforcer validates futures candles
+ * - analyze() accepts FuturesCandle[]
+ * - analyze() throws DataUnavailableError if insufficient candles (< 30)
+ * - analyze() returns valid FuturesAnalysis
+ * - CVD is calculated correctly
+ * - NO Math.random in engine
+ * - Type safety: rejects SpotCandle[] (compile-time checked via branded type)
  * 
- * NO Math.random. NO fake data.
+ * NO fake data. Deterministic.
  */
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FuturesEngine } from '../FuturesEngine';
+import { FuturesEngine, futuresEngine } from '../FuturesEngine';
 import { CandleRepository } from '../../candleRepository';
 import { PriceSourceEnforcer, DataUnavailableError, PriceSourceError } from '../../../src/engine/enforcer/PriceSourceEnforcer';
 import { FuturesCandle } from '../../../src/engine/types/branded';
@@ -43,6 +43,70 @@ test('FuturesEngine — Unit Tests', async (t) => {
         return true;
       }
     );
+  });
+
+  await t.test('analyzeCandles() throws DataUnavailableError for < 30 candles', () => {
+    const engine = futuresEngine;
+    const fewCandles: FuturesCandle[] = [
+      PriceSourceEnforcer.enforceFutures({
+        time: 1700000000,
+        open: 2750,
+        high: 2760,
+        low: 2740,
+        close: 2755,
+        volume: 100,
+        source: 'FUTURES',
+      }),
+    ];
+
+    assert.throws(
+      () => engine.analyzeCandles(fewCandles),
+      (err: any) => {
+        assert.ok(err instanceof DataUnavailableError);
+        assert.strictEqual(err.code, 'INSUFFICIENT_CANDLES');
+        return true;
+      }
+    );
+  });
+
+  await t.test('analyzeCandles() accepts 35 FuturesCandles and returns valid FuturesAnalysis with CVD', () => {
+    const engine = futuresEngine;
+    const candles: FuturesCandle[] = [];
+    const baseTime = 1700000000;
+
+    for (let i = 0; i < 35; i++) {
+      const open = 2750 + (i % 5) * 2;
+      const high = open + 5;
+      const low = open - 4;
+      const close = open + 2;
+      candles.push(
+        PriceSourceEnforcer.enforceFutures({
+          time: baseTime + i * 900,
+          open,
+          high,
+          low,
+          close,
+          volume: 600 + i * 15,
+          openInterest: 50000 + i * 100,
+          source: 'FUTURES',
+        })
+      );
+    }
+
+    const analysis = engine.analyzeCandles(candles);
+    assert.ok(analysis, 'Analysis should be returned');
+    assert.strictEqual(analysis.symbol, 'COMEX:GC1!');
+    assert.ok(typeof analysis.score === 'number');
+    assert.ok(analysis.score >= 0 && analysis.score <= 100);
+    assert.ok(['LONG', 'SHORT', 'NEUTRAL'].includes(analysis.direction));
+    assert.ok(analysis.cvd, 'CVD must be included');
+    assert.strictEqual(typeof analysis.cvd.cumulativeDelta, 'number');
+    assert.ok(analysis.cvd.buyVolume >= 0);
+    assert.ok(analysis.cvd.sellVolume >= 0);
+    assert.strictEqual(typeof analysis.openInterest, 'number');
+    assert.strictEqual(analysis.openInterest, 53400); // 50000 + 34 * 100
+    assert.ok(Array.isArray(analysis.confluence));
+    assert.ok(analysis.timestamp > 0);
   });
 
   await t.test('calculateATR() works with real futures candle sequence', () => {
@@ -100,8 +164,6 @@ test('FuturesEngine — Unit Tests', async (t) => {
       }),
     ];
 
-    // Typical prices: (2760+2740+2750)/3 = 2750; (2780+2760+2770)/3 = 2770
-    // Weighted: (2750*100 + 2770*200) / 300 = (275000 + 554000) / 300 = 829000 / 300 = 2763.33
     const vwap = engine.calculateVWAP(sampleCandles);
     assert.strictEqual(vwap, 2763.33);
   });
@@ -130,7 +192,7 @@ test('FuturesEngine — Unit Tests', async (t) => {
     );
   });
 
-  await t.test('calculateCVD() calculates cumulative delta using Institutional Delta formula', () => {
+  await t.test('calculateCVD() calculates cumulative delta correctly', () => {
     const engine = new FuturesEngine({} as any);
 
     const candles: FuturesCandle[] = [
@@ -225,7 +287,7 @@ test('FuturesEngine — Unit Tests', async (t) => {
       },
       (err: any) => {
         assert.ok(err instanceof PriceSourceError);
-        assert.strictEqual(err.code, 'INVALID_OHLC');
+        assert.strictEqual(err.code, 'HIGH_LESS_THAN_LOW');
         return true;
       }
     );

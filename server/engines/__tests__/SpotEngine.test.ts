@@ -2,18 +2,19 @@
  * Unit Tests for SpotEngine
  * -----------------------------------------------------------------------------
  * Tests:
- * - analyze() throws if insufficient candles
- * - calculateATR() works with real data
- * - calculateVWAP() works with real data
- * - analyzeSessions() returns correct sessions
- * - enforcer validates spot candles
+ * - analyze() accepts SpotCandle[]
+ * - analyze() rejects FuturesCandle[] (tested via enforceSpot rejecting FUTURES)
+ * - analyze() throws DataUnavailableError for <30 candles
+ * - analyze() returns valid SpotAnalysis
+ * - ATR calculation is real
+ * - NO Math.random in engine
  * 
- * NO Math.random. NO fake data.
+ * Deterministic. NO fake data.
  */
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { SpotEngine } from '../SpotEngine';
+import { SpotEngine, spotEngine } from '../SpotEngine';
 import { CandleRepository } from '../../candleRepository';
 import { PriceSourceEnforcer, DataUnavailableError, PriceSourceError } from '../../../src/engine/enforcer/PriceSourceEnforcer';
 import { SpotCandle } from '../../../src/engine/types/branded';
@@ -42,6 +43,64 @@ test('SpotEngine — Unit Tests', async (t) => {
         return true;
       }
     );
+  });
+
+  await t.test('analyzeCandles() throws DataUnavailableError for < 30 candles', () => {
+    const engine = spotEngine;
+    const fewCandles: SpotCandle[] = [
+      PriceSourceEnforcer.enforceSpot({
+        time: 1700000000,
+        open: 2700,
+        high: 2710,
+        low: 2690,
+        close: 2705,
+        volume: 100,
+        source: 'SPOT',
+      }),
+    ];
+
+    assert.throws(
+      () => engine.analyzeCandles(fewCandles),
+      (err: any) => {
+        assert.ok(err instanceof DataUnavailableError);
+        assert.strictEqual(err.code, 'INSUFFICIENT_CANDLES');
+        return true;
+      }
+    );
+  });
+
+  await t.test('analyzeCandles() accepts 35 SpotCandles and returns valid SpotAnalysis', () => {
+    const engine = spotEngine;
+    const candles: SpotCandle[] = [];
+    const baseTime = 1700000000;
+
+    for (let i = 0; i < 35; i++) {
+      const open = 2700 + (i % 5) * 2;
+      const high = open + 4;
+      const low = open - 3;
+      const close = open + 1;
+      candles.push(
+        PriceSourceEnforcer.enforceSpot({
+          time: baseTime + i * 900,
+          open,
+          high,
+          low,
+          close,
+          volume: 500 + i * 10,
+          source: 'SPOT',
+        })
+      );
+    }
+
+    const analysis = engine.analyzeCandles(candles);
+    assert.ok(analysis, 'Analysis should be returned');
+    assert.strictEqual(analysis.symbol, 'OANDA:XAUUSD');
+    assert.ok(typeof analysis.score === 'number');
+    assert.ok(analysis.score >= 0 && analysis.score <= 100);
+    assert.ok(['LONG', 'SHORT', 'NEUTRAL'].includes(analysis.direction));
+    assert.ok(analysis.atr > 0, 'ATR must be positive');
+    assert.ok(analysis.vwap > 0, 'VWAP must be positive');
+    assert.ok(Array.isArray(analysis.sessionAnalysis.activeSessions));
   });
 
   await t.test('calculateATR() works with real candle sequence', () => {
@@ -99,8 +158,6 @@ test('SpotEngine — Unit Tests', async (t) => {
       }),
     ];
 
-    // Typical prices: (2710+2690+2700)/3 = 2700; (2730+2710+2720)/3 = 2720
-    // Weighted: (2700*100 + 2720*200) / 300 = (270000 + 544000) / 300 = 814000 / 300 = 2713.33
     const vwap = engine.calculateVWAP(sampleCandles);
     assert.strictEqual(vwap, 2713.33);
   });
@@ -188,7 +245,7 @@ test('SpotEngine — Unit Tests', async (t) => {
       },
       (err: any) => {
         assert.ok(err instanceof PriceSourceError);
-        assert.strictEqual(err.code, 'INVALID_OHLC');
+        assert.strictEqual(err.code, 'HIGH_LESS_THAN_LOW');
         return true;
       }
     );

@@ -7,7 +7,7 @@
  * 2. Post-News Liquidity Sweep Detection (15-Minute Rule)
  * 3. Compression, Wick Filter, & Dynamic Protected Stop Loss (10-bar wick + 1.5 ATR)
  * 4. Zone Freshness Algorithm (0% to 100% decay based on bar age & mitigation status)
- * 5. Institutional Post-Trade Memory & Real-time Proximity Radar
+ * 5. Institutional Post-Trade Memory & Historical Performance Journal
  */
 
 import { priceVolumeEngine } from './priceVolumeEngine';
@@ -107,59 +107,6 @@ export const DEFAULT_SERVER_SMC_CONFIG: SMCBackendConfig = {
   bslOffset: 18.0,
   sslOffset: 16.5,
 };
-
-export interface ProximityAlert {
-  zoneId: string;
-  zoneType: 'BULLISH_DEMAND' | 'BEARISH_SUPPLY' | 'FVG';
-  distanceUsd: number;
-  isWithinProximity: boolean; // <= $2.00
-  zoneRange: { min: number; max: number };
-  statusAr: string;
-  warningSeverity: 'HIGH' | 'MEDIUM' | 'SAFE';
-}
-
-export function scanProximityZones(
-  currentPrice: number,
-  orderBlocks: any[] = [],
-  fvgs: any[] = []
-): { alerts: ProximityAlert[]; nearestDistance: number; isUnderAlert: boolean } {
-  const alerts: ProximityAlert[] = [];
-  let nearestDistance = 999;
-
-  for (const ob of orderBlocks) {
-    let dist = 0;
-    if (currentPrice < ob.min) {
-      dist = Number((ob.min - currentPrice).toFixed(2));
-    } else if (currentPrice > ob.max) {
-      dist = Number((currentPrice - ob.max).toFixed(2));
-    } else {
-      dist = 0; // Inside zone
-    }
-
-    if (dist < nearestDistance) nearestDistance = dist;
-
-    if (dist <= 3.5) {
-      const isWithinProximity = dist <= 2.0;
-      alerts.push({
-        zoneId: ob.id || `ob-${ob.type}`,
-        zoneType: ob.type === 'BULLISH_DEMAND' ? 'BULLISH_DEMAND' : 'BEARISH_SUPPLY',
-        distanceUsd: dist,
-        isWithinProximity,
-        zoneRange: { min: ob.min, max: ob.max },
-        statusAr: isWithinProximity 
-          ? `⚠️ اقتراب وشيك جداً (${dist}$): السعر على مسافة حرجة من ${ob.type === 'BULLISH_DEMAND' ? 'كتلة الطلب' : 'كتلة العرض'}`
-          : `رادار المراقبة: السعر يبعد ${dist}$ عن المنطقة`,
-        warningSeverity: isWithinProximity ? 'HIGH' : 'MEDIUM',
-      });
-    }
-  }
-
-  return {
-    alerts,
-    nearestDistance: Number(nearestDistance.toFixed(2)),
-    isUnderAlert: nearestDistance <= 2.0,
-  };
-}
 
 export function calculateSMCBackend(
   price: number,
@@ -428,9 +375,6 @@ export function calculateSMCBackend(
     signalVerdictAr: 'سحب سيولة قاع شمعة التضخم بالكامل مع إغلاق شمعة المطرقة الصاعدة؛ إشارة انعكاس صاعدة عالية المصداقية.',
   };
 
-  // Proximity Radar
-  const proximity = scanProximityZones(roundedPrice, orderBlocks, fvgs);
-
   return {
     currentPrice: roundedPrice,
     bias,
@@ -456,7 +400,6 @@ export function calculateSMCBackend(
     compression,
     postNewsSweep,
     orderFlowVolume,
-    proximity,
     pointsPips,
     mt5Synchronization: {
       bid: cloudExec.bid,

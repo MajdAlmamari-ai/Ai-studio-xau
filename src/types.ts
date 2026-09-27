@@ -156,18 +156,7 @@ export interface OrderBlockDetail {
   isMarketMemory?: boolean; // Memory Index layer
 }
 
-// 5. Proximity Scanner & Real-Time Alerts
-export interface ProximityAlert {
-  id: string;
-  timestamp: string;
-  levelName: string;
-  targetPrice: number;
-  distanceToPrice: number;
-  status: 'EARLY_WARNING' | 'CONFLUENCE_READY' | 'TRIGGERED';
-  messageAr: string;
-}
-
-// 6. Post-Trade Memory & Performance Journal
+// 5. Post-Trade Memory & Performance Journal
 export interface PostTradeRecord {
   id: string;
   date: string;

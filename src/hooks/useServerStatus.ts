@@ -14,7 +14,6 @@ export interface SystemStatusData {
   backendServices: {
     smcQuantEngine: string;
     zoneFreshnessDecay: string;
-    proximityScanner: string;
     futuresBasisArbitrage: string;
     scheduler: string;
     telegramProxy: string;

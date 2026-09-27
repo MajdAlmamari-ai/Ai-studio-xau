@@ -74,7 +74,6 @@ function categorizeFile(relPath: string): {
     norm.includes('multiTimeframeService') ||
     norm.includes('compressionWick') ||
     norm.includes('postNewsSweep') ||
-    norm.includes('proximityScanner') ||
     norm.includes('mlService')
   ) {
     return {

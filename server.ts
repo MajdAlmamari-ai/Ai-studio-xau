@@ -23,9 +23,9 @@ import { dispatchToTelegram } from './server/telegramProxy';
 import {
   calculateSMCBackend,
   calculateOBZoneFreshness,
-  scanProximityZones,
   DEFAULT_SERVER_SMC_CONFIG,
 } from './server/smcQuantService';
+import { healthCheckHandler } from './server/health';
 import {
   getServerSignals,
   addServerSignal,
@@ -228,6 +228,9 @@ app.get(['/api/news', '/api/news/economic'], (req, res) => {
     ],
   });
 });
+
+// Production Health Check Endpoint (Action 28.2)
+app.get('/health', healthCheckHandler);
 
 // 3. Machine Learning Forecast API
 app.get(['/api/ml-forecast', '/api/ml/forecast'], (req, res) => {
@@ -784,18 +787,6 @@ app.post('/api/smc/zone-freshness', (req, res) => {
     res.json(freshness);
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to compute zone freshness', details: err.message });
-  }
-});
-
-// Proximity Scanner API
-app.get('/api/smc/proximity', (req, res) => {
-  try {
-    const priceParam = req.query.price ? Number(req.query.price) : getCachedSpotPrice();
-    const currentPrice = isNaN(priceParam) ? getCachedSpotPrice() : priceParam;
-    const analysis = calculateSMCBackend(currentPrice);
-    res.json(analysis.proximity);
-  } catch (err: any) {
-    res.status(500).json({ error: 'Proximity scanner error', details: err.message });
   }
 });
 

@@ -1,9 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { Header, ActiveTabType } from './components/Header';
 import { SetupGuideModal } from './components/SetupGuideModal';
 import { SignalsArchiveModal } from './components/SignalsArchiveModal';
 import { DownloadProjectModal } from './components/DownloadProjectModal';
 import { TabContentRenderer } from './components/TabContentRenderer';
+import { TabNavigation, MainTabType } from './components/TabNavigation';
+
+// Code-split tabs for optimized bundle delivery
+const SpotAnalysisTab = lazy(() => import('./components/tabs/SpotAnalysisTab').then(m => ({ default: m.SpotAnalysisTab })));
+const FuturesAnalysisTab = lazy(() => import('./components/tabs/FuturesAnalysisTab').then(m => ({ default: m.FuturesAnalysisTab })));
+const FusionViewTab = lazy(() => import('./components/tabs/FusionViewTab').then(m => ({ default: m.FusionViewTab })));
+const ChartsTab = lazy(() => import('./components/tabs/ChartsTab').then(m => ({ default: m.ChartsTab })));
 
 import { 
   SMCConfig, 
@@ -41,6 +48,7 @@ const SAFE_DEFAULT_ANALYSIS: SMCAnalysis = {
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTabType>('terminal');
+  const [mainTab, setMainTab] = useState<MainTabType>('fusion');
   const [isGuideOpen, setIsGuideOpen] = useState<boolean>(false);
   const [isArchiveOpen, setIsArchiveOpen] = useState<boolean>(false);
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState<boolean>(false);
@@ -153,18 +161,6 @@ export default function App() {
     }
   };
 
-  const handleDispatchProximityAlert = (message: string) => {
-    const alertText = `🚨 *تنبيه الماسح اللحظي للأموال الذكية:*\n${message}\n\n📍 *السعر الحالي:* ${currentPrice ? `$${currentPrice}` : 'بانتظار البث السحابي'}`;
-    if (telegramConfig.botToken && telegramConfig.chatId) {
-      sendTelegramMessage(telegramConfig.botToken, telegramConfig.chatId, alertText);
-    }
-    addLog({
-      step: 'تنبيه الماسح اللحظي',
-      status: 'success',
-      message: `تم بث تنبيه الاقتراب لمسافة ≤ $2.0: ${message}`,
-    });
-  };
-
   return (
     <div className="min-h-screen bg-[#0A0C10] text-gray-200 flex flex-col font-sans selection:bg-amber-400/30 selection:text-amber-200" dir="rtl">
       
@@ -181,33 +177,54 @@ export default function App() {
         onOpenDownloadModal={() => setIsDownloadModalOpen(true)}
       />
 
+      {/* Primary Fusion & Engine Navigation Tabs */}
+      <TabNavigation activeTab={mainTab} onChangeTab={setMainTab} />
+
       {/* Main App Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-4 lg:px-6 py-4 space-y-4">
-        <TabContentRenderer
-          activeTab={activeTab}
-          analysis={analysis ?? SAFE_DEFAULT_ANALYSIS}
-          currentPrice={currentPrice}
-          priceData={priceData}
-          futuresData={futuresData}
-          newsData={newsData}
-          scenarioData={scenarioData}
-          isLoadingPrice={isLoadingPrice}
-          activeScenario={activeScenario}
-          smcConfig={smcConfig}
-          telegramConfig={telegramConfig}
-          logs={logs}
-          nextCycleSeconds={nextCycleSeconds}
-          isTriggering={isTriggering}
-          runExecutionCycle={runExecutionCycle}
-          loadMarketData={loadMarketData}
-          onUpdateConfig={handleUpdateConfig}
-          onSaveTelegramConfig={handleSaveTelegramConfig}
-          onSetCustomPrice={handleSetCustomPrice}
-          onSimulateSweep={handleSimulateSweep}
-          onDispatchProximityAlert={handleDispatchProximityAlert}
-          onOpenSignalsArchive={() => setIsArchiveOpen(true)}
-          setActiveTab={setActiveTab}
-        />
+        {/* Render New Phase 3 Tabs with Suspense fallback */}
+        <Suspense fallback={
+          <div className="flex items-center justify-center p-12 bg-[#121620] border border-zinc-800 rounded-xl">
+            <span className="text-amber-400 font-mono text-sm animate-pulse">جاري تحميل الوحدة المؤسساتية...</span>
+          </div>
+        }>
+          {mainTab === 'spot' && <SpotAnalysisTab currentPrice={currentPrice} />}
+          {mainTab === 'futures' && <FuturesAnalysisTab currentPrice={futuresData?.futuresPrice ?? 2710} />}
+          {mainTab === 'fusion' && <FusionViewTab />}
+          {mainTab === 'charts' && <ChartsTab currentPrice={currentPrice} />}
+        </Suspense>
+
+        {/* Legacy Workspace Panel Toggle / Sub-view */}
+        <div className="pt-6 border-t border-[#1A1F2E]">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-bold text-zinc-400">لوحة الأدوات المؤسساتية المتكاملة (Workspace Console)</span>
+            <span className="text-[11px] font-mono text-zinc-500">Active Module: {activeTab}</span>
+          </div>
+          <TabContentRenderer
+            activeTab={activeTab}
+            analysis={analysis ?? SAFE_DEFAULT_ANALYSIS}
+            currentPrice={currentPrice}
+            priceData={priceData}
+            futuresData={futuresData}
+            newsData={newsData}
+            scenarioData={scenarioData}
+            isLoadingPrice={isLoadingPrice}
+            activeScenario={activeScenario}
+            smcConfig={smcConfig}
+            telegramConfig={telegramConfig}
+            logs={logs}
+            nextCycleSeconds={nextCycleSeconds}
+            isTriggering={isTriggering}
+            runExecutionCycle={runExecutionCycle}
+            loadMarketData={loadMarketData}
+            onUpdateConfig={handleUpdateConfig}
+            onSaveTelegramConfig={handleSaveTelegramConfig}
+            onSetCustomPrice={handleSetCustomPrice}
+            onSimulateSweep={handleSimulateSweep}
+            onOpenSignalsArchive={() => setIsArchiveOpen(true)}
+            setActiveTab={setActiveTab}
+          />
+        </div>
       </main>
 
       {/* Footer */}

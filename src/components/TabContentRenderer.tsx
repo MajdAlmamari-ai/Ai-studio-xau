@@ -16,7 +16,6 @@ import { RepoCodeCenter } from './RepoCodeCenter';
 import { OrderFlowVolumeCard } from './OrderFlowVolumeCard';
 import { PostNewsSweepCard } from './PostNewsSweepCard';
 import { CompressionAndWickCard } from './CompressionAndWickCard';
-import { ProximityScannerCard } from './ProximityScannerCard';
 import { PostTradeJournalCard } from './PostTradeJournalCard';
 import { PriceVolumeEngineCard } from './PriceVolumeEngineCard';
 import { CloudMarketSyncCard } from './CloudMarketSyncCard';
@@ -58,7 +57,6 @@ interface TabContentRendererProps {
   onSaveTelegramConfig: (cfg: TelegramConfig) => void;
   onSetCustomPrice: (price: number, label: string) => void;
   onSimulateSweep: (type: 'BULLISH' | 'BEARISH') => void;
-  onDispatchProximityAlert: (message: string) => void;
   onOpenSignalsArchive?: () => void;
   setActiveTab: (tab: ActiveTabType) => void;
 }
@@ -84,7 +82,6 @@ export const TabContentRenderer: React.FC<TabContentRendererProps> = ({
   onSaveTelegramConfig,
   onSetCustomPrice,
   onSimulateSweep,
-  onDispatchProximityAlert,
   onOpenSignalsArchive,
   setActiveTab,
 }) => {
@@ -92,14 +89,6 @@ export const TabContentRenderer: React.FC<TabContentRendererProps> = ({
     case 'terminal':
       return (
         <div className="space-y-4">
-          {/* Proximity Scanner Alert Radar (Top Priority Notice) */}
-          <ProximityScannerCard
-            currentPrice={currentPrice}
-            orderBlocks={analysis.orderBlocks}
-            fvgs={analysis.fvgs}
-            onDispatchAlert={onDispatchProximityAlert}
-          />
-
           {/* Grid Row 1: Live Spot Price & COMEX Futures Comparison */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
             <div className="lg:col-span-7 xl:col-span-8">
@@ -280,12 +269,6 @@ export const TabContentRenderer: React.FC<TabContentRendererProps> = ({
     case 'scanner':
       return (
         <div className="space-y-4">
-          <ProximityScannerCard
-            currentPrice={currentPrice}
-            orderBlocks={analysis.orderBlocks}
-            fvgs={analysis.fvgs}
-            onDispatchAlert={onDispatchProximityAlert}
-          />
           <LiquidityMap analysis={analysis} />
         </div>
       );

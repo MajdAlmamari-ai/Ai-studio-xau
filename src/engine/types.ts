@@ -4,8 +4,13 @@
  */
 
 import type { NormalizedCandle } from '../types/sharedTypes';
+import type { SpotCandle, FuturesCandle } from './types/branded';
 
 export type { NormalizedCandle };
+export type TypedCandle = SpotCandle | FuturesCandle;
+
+export type { SpotPrice, FuturesPrice, SpotCandle, FuturesCandle } from './types/branded';
+export { asSpotPrice, asFuturesPrice } from './types/branded';
 
 /**
  * ATR result aligned with input candles.
