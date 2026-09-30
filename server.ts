@@ -15,6 +15,7 @@ import {
   fetchLiveGoldFuturesQuote,
   calculateFuturesQuote,
   getCachedSpotPrice,
+  setCachedSpotPrice,
   getActivePricingMode,
   setActivePricingMode,
 } from './server/pricingService';
@@ -44,16 +45,7 @@ import {
 } from './server/automationScheduler';
 import { generateProjectZipBuffer, getProjectZipPath } from './server/zipService';
 import { buildProjectSourceBundle, getPublicSourceJsonPath, generateSingleFileMarkdown, generateCategoryMarkdown } from './server/projectBundleService';
-import { 
-  getGateIoConsolidatedOverview, 
-  getGateIoSpotMasterOverview,
-  fetchGateIoSpotTicker, 
-  fetchGateIoFuturesTicker, 
-  fetchGateIoCandlesticks, 
-  fetchGateIoOrderBook,
-  fetchGateIoSpotTrades,
-  fetchGateIoFuturesTrades
-} from './server/gateIoService';
+import { fetchYahooHistoricalCandles } from './server/yahooFinanceService';
 import { priceVolumeEngine } from './server/priceVolumeEngine';
 import { getCloudGoldState, setManualPrice, syncCloudGoldData } from './server/cloudHttpGoldEngine';
 import { getCandlesForTimeframe, ChartTimeframe } from './server/candlesService';
@@ -61,13 +53,14 @@ import { calculateMultiTimeframeSMC } from './server/multiTimeframeEngine';
 import { logger } from './server/loggerService';
 import { tvRouter } from './server/tvRouter';
 import { apiRouter } from './server/api/routes';
-import { getTvRelay } from './server/tvRelay';
+import { getTvRelay, SYMBOLS } from './server/tvRelay';
 import { getTvLiveUpdater } from './server/tvLiveUpdater';
 import { runInitialBackfill } from './server/backfillService';
 
 dotenv.config();
 
 const app = express();
+// Port 3000 is required by the AI Studio preview environment
 const PORT = 3000;
 
 // Security & Payload sanitization
@@ -79,7 +72,7 @@ app.use((req, res, next) => {
   
   // Apply smart cache headers
   if (req.method === 'GET') {
-    if (req.path.startsWith('/api/gateio') || req.path.startsWith('/api/price')) {
+    if (req.path.startsWith('/api/tv') || req.path.startsWith('/api/price')) {
       res.setHeader('Cache-Control', 'public, max-age=1, stale-while-revalidate=2');
     } else if (req.path.startsWith('/api/candles')) {
       res.setHeader('Cache-Control', 'public, max-age=10, stale-while-revalidate=20');
@@ -139,13 +132,13 @@ app.get('/api/gold/pricing-mode', (req, res) => {
   res.json({
     mode: getActivePricingMode(),
     currentPrice: getCachedSpotPrice(),
-    autoCalibrated: getActivePricingMode() === 'gateio_cfd',
+    autoCalibrated: getActivePricingMode() === 'tradingview_live',
   });
 });
 
 app.post('/api/gold/pricing-mode', async (req, res) => {
   const { mode, manualPrice } = req.body || {};
-  if (mode === 'gateio_cfd' || mode === 'gateio_spot' || mode === 'manual') {
+  if (mode === 'tradingview_live' || mode === 'yahoo_historical' || mode === 'manual') {
     setActivePricingMode(mode, manualPrice ? Number(manualPrice) : undefined);
     const quote = await fetchLiveGoldSpot();
     res.json({
@@ -153,26 +146,26 @@ app.post('/api/gold/pricing-mode', async (req, res) => {
       mode,
       quote,
       messageAr:
-        mode === 'gateio_cfd'
-          ? 'تم تفعيل الضبط التلقائي الحي ومطابقة شارت Gate CFD (XAUUSD)'
-          : mode === 'gateio_spot'
-          ? 'تم تفعيل وضع السعر الفوري الخالص Gate Spot (PAXG)'
+        mode === 'tradingview_live'
+          ? 'تم تفعيل التغذية اللحظية المباشرة من شبكة TradingView المؤسساتية'
+          : mode === 'yahoo_historical'
+          ? 'تم تفعيل وضع البيانات التاريخية الموثقة من Yahoo Finance (COMEX GC=F)'
           : `تم تفعيل المعايرة اليدوية عند $${quote.price.toFixed(2)}`,
     });
   } else {
-    res.status(400).json({ error: 'وضع غير صالح. الأوضاع المتاحة: gateio_cfd | gateio_spot | manual' });
+    res.status(400).json({ error: 'وضع غير صالح. الأوضاع المتاحة: tradingview_live | yahoo_historical | manual' });
   }
 });
 
 app.post('/api/gold/auto-calibrate', async (req, res) => {
-  setActivePricingMode('gateio_cfd');
+  setActivePricingMode('tradingview_live');
   const quote = await fetchLiveGoldSpot();
   res.json({
     success: true,
-    mode: 'gateio_cfd',
+    mode: 'tradingview_live',
     autoCalibrated: true,
     quote,
-    messageAr: 'تم الضبط التلقائي بنجاح مع شارت Gate CFD (XAUUSD)',
+    messageAr: 'تم الضبط التلقائي بنجاح مع شبكة TradingView المؤسساتية الحية',
   });
 });
 
@@ -620,141 +613,65 @@ app.get(['/api/project/download-category/:id', '/download/category/:id'], (req, 
 });
 
 // -----------------------------------------------------------------------------
-// 6.4 Gate.io Official API Integration (Spot PAXG & Master Feed)
+// 6.4 Yahoo Finance Historical Data & TradingView Institutional Feeds
 // -----------------------------------------------------------------------------
 
-// Master Dedicated XAU/USD Spot Feed (Ticker, OrderBook, Trades, CVD)
-app.get('/api/gateio/spot/master', async (req, res) => {
+// Yahoo Finance Historical Candlesticks (COMEX GC=F)
+app.get(['/api/yahoo/candles', '/api/yahoo/history'], async (req, res) => {
   try {
-    const force = req.query.force === 'true';
-    const master = await getGateIoSpotMasterOverview(force);
-    res.json(master);
+    const symbol = (req.query.symbol as string) || 'GC=F';
+    const interval = (req.query.interval as string) || '60m';
+    const range = (req.query.range as string) || '1mo';
+
+    const data = await fetchYahooHistoricalCandles(symbol, interval, range);
+    res.json(data);
   } catch (err: any) {
-    console.error('[Gate.io Spot Master API Error]:', err);
-    res.status(500).json({ error: 'Failed to fetch Gate.io spot master feed', message: err.message });
+    console.error('[Yahoo Finance Historical API Error]:', err);
+    res.status(500).json({ error: 'Failed to fetch Yahoo Finance historical candles', message: err.message });
   }
 });
 
-// Live Spot Trades & Cumulative Volume Delta (CVD)
-app.get('/api/gateio/spot/trades', async (req, res) => {
+// TradingView Live Quotes Status & Snapshot
+app.get('/api/tv/status', (req, res) => {
   try {
-    const pair = (req.query.pair as string) || 'PAXG_USDT';
-    const limit = parseInt(req.query.limit as string, 10) || 30;
-    const trades = await fetchGateIoSpotTrades(pair, limit);
-    res.json(trades);
-  } catch (err: any) {
-    console.error('[Gate.io Spot Trades Error]:', err);
-    res.status(500).json({ error: 'Failed to fetch Gate.io spot trades', message: err.message });
-  }
-});
+    const relay = getTvRelay();
+    const spot = relay.getQuote(SYMBOLS.SPOT_PRIMARY);
+    const futures = relay.getQuote(SYMBOLS.FUTURES);
 
-// Live Futures Trades & Cumulative Volume Delta (CVD) for XAU_USDT
-app.get('/api/gateio/futures/trades', async (req, res) => {
-  try {
-    const contract = (req.query.contract as string) || 'XAU_USDT';
-    const limit = parseInt(req.query.limit as string, 10) || 100;
-    const trades = await fetchGateIoFuturesTrades(contract, limit);
-    res.json(trades);
-  } catch (err: any) {
-    console.error('[Gate.io Futures Trades Error]:', err);
-    res.status(500).json({ error: 'Failed to fetch Gate.io futures trades', message: err.message });
-  }
-});
-
-// Live Consolidated Overview (Spot + Futures + Spread)
-app.get('/api/gateio/overview', async (req, res) => {
-  try {
-    const force = req.query.force === 'true';
-    const overview = await getGateIoConsolidatedOverview(force);
-    res.json(overview);
-  } catch (err: any) {
-    console.error('[Gate.io Overview API Error]:', err);
-    res.status(500).json({ error: 'Failed to fetch Gate.io overview', message: err.message });
-  }
-});
-
-// Live Spot Ticker (PAXG_USDT)
-app.get('/api/gateio/spot/ticker', async (req, res) => {
-  try {
-    const pair = (req.query.pair as string) || 'PAXG_USDT';
-    const ticker = await fetchGateIoSpotTicker(pair);
-    res.json(ticker);
-  } catch (err: any) {
-    console.error('[Gate.io Spot Ticker Error]:', err);
-    res.status(500).json({ error: 'Failed to fetch Gate.io spot ticker', message: err.message });
-  }
-});
-
-// Live Futures Ticker (XAU_USDT)
-app.get('/api/gateio/futures/ticker', async (req, res) => {
-  try {
-    const contract = (req.query.contract as string) || 'XAU_USDT';
-    const ticker = await fetchGateIoFuturesTicker(contract);
-    res.json(ticker);
-  } catch (err: any) {
-    console.error('[Gate.io Futures Ticker Error]:', err);
-    res.status(500).json({ error: 'Failed to fetch Gate.io futures ticker', message: err.message });
-  }
-});
-
-// Historical & Live Candlesticks (Spot / Futures)
-app.get('/api/gateio/candlesticks', async (req, res) => {
-  try {
-    const market = (req.query.market as 'spot' | 'futures') || 'spot';
-    const interval = (req.query.interval as string) || '1h';
-    const limit = parseInt(req.query.limit as string, 10) || 60;
-
-    const candles = await fetchGateIoCandlesticks(market, interval, limit);
     res.json({
-      market,
-      symbol: market === 'spot' ? 'PAXG_USDT' : 'XAU_USDT',
-      interval,
-      count: candles.length,
-      candles,
+      status: relay.getState().status,
+      spot,
+      futures,
       updatedAt: new Date().toISOString(),
     });
   } catch (err: any) {
-    console.error('[Gate.io Candlesticks Error]:', err);
-    res.status(500).json({ error: 'Failed to fetch Gate.io candlesticks', message: err.message });
+    res.status(500).json({ error: 'Failed to get TradingView relay status', message: err.message });
   }
 });
 
-// Order Book Depth L2 (Spot / Futures)
-app.get('/api/gateio/orderbook', async (req, res) => {
+// Apply Live Price directly to SMC Quant Engine
+app.post('/api/price/apply-to-engine', (req, res) => {
   try {
-    const market = (req.query.market as 'spot' | 'futures') || 'spot';
-    const limit = parseInt(req.query.limit as string, 10) || 10;
-    const orderBook = await fetchGateIoOrderBook(market, limit);
-    res.json(orderBook);
-  } catch (err: any) {
-    console.error('[Gate.io OrderBook Error]:', err);
-    res.status(500).json({ error: 'Failed to fetch Gate.io order book', message: err.message });
-  }
-});
-
-// Apply Gate.io Price to SMC Quant Engine
-app.post('/api/gateio/apply-to-engine', (req, res) => {
-  try {
-    const { price, source = 'spot' } = req.body;
+    const { price, source = 'tradingview' } = req.body;
     const numericPrice = parseFloat(price);
 
     if (isNaN(numericPrice) || numericPrice <= 0) {
       return res.status(400).json({ error: 'Invalid price provided' });
     }
 
-    // Update cloud engine and manual price
     setManualPrice(numericPrice);
+    setCachedSpotPrice(numericPrice);
 
     res.json({
       success: true,
       appliedPrice: numericPrice,
-      source: `Gate.io ${source.toUpperCase()}`,
-      messageAr: `تم تطبيق سعر Gate.io (${numericPrice}$) بنجاح كمرجع نشط لمحرك SMC المؤسساتي.`,
+      source: `Institutional ${source.toUpperCase()}`,
+      messageAr: `تم تطبيق السعر المباشر (${numericPrice}$) بنجاح كمرجع نشط لمحرك SMC المؤسساتي.`,
       timestamp: new Date().toISOString(),
     });
   } catch (err: any) {
-    console.error('[Gate.io Apply Price Error]:', err);
-    res.status(500).json({ error: 'Failed to apply Gate.io price', message: err.message });
+    console.error('[Apply Price Error]:', err);
+    res.status(500).json({ error: 'Failed to apply price', message: err.message });
   }
 });
 
@@ -1027,7 +944,7 @@ async function startServer() {
 
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: { middlewareMode: true, hmr: false },
       appType: 'spa',
     });
     app.use(vite.middlewares);

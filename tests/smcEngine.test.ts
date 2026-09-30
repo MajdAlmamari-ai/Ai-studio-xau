@@ -8,25 +8,18 @@ import {
   calculateOBZoneFreshness, 
   DEFAULT_SERVER_SMC_CONFIG 
 } from '../server/smcQuantService';
+import { DataUnavailableError } from '../src/engine/enforcer/PriceSourceEnforcer';
 
 test('SMC Quant Engine - Core Institutional Calculations', async (t) => {
-  await t.test('detects Order Blocks, FVGs, and Liquidity Pools around current price', () => {
-    const currentPrice = 4450.0;
-    const analysis = calculateSMCBackend(currentPrice, DEFAULT_SERVER_SMC_CONFIG);
-
-    assert.ok(analysis, 'Analysis output should be defined');
-    assert.strictEqual(typeof analysis.currentPrice, 'number');
-    assert.ok(analysis.orderBlocks.length > 0, 'Should detect at least one Order Block');
-    assert.ok(analysis.fvgs.length > 0, 'Should detect at least one FVG');
-    assert.ok(analysis.bsl > currentPrice, 'Buy-Side Liquidity (BSL) must be above current price');
-    assert.ok(analysis.ssl < currentPrice, 'Sell-Side Liquidity (SSL) must be below current price');
-  });
-
-  await t.test('enforces strict Risk:Reward ratio constraint (R:R >= 1:2.0)', () => {
-    const analysis = calculateSMCBackend(4400.0, DEFAULT_SERVER_SMC_CONFIG);
-    
-    assert.ok(analysis.rrNumeric >= 2.0, `Recommendation R:R must be >= 2.0, received: ${analysis.rrNumeric}`);
-    assert.strictEqual(analysis.wickFilter.isRRApproved, true, 'Wick filter must approve R:R');
+  await t.test('calculateSMCBackend throws DataUnavailableError (DEPRECATED_PATH)', () => {
+    assert.throws(
+      () => calculateSMCBackend(4450.0, DEFAULT_SERVER_SMC_CONFIG),
+      (err: any) => {
+        assert.ok(err instanceof DataUnavailableError);
+        assert.strictEqual(err.code, 'DEPRECATED_PATH');
+        return true;
+      }
+    );
   });
 
   await t.test('calculates Zone Freshness Index correctly with decay rules', () => {
@@ -44,15 +37,5 @@ test('SMC Quant Engine - Core Institutional Calculations', async (t) => {
     const breached = calculateOBZoneFreshness(22, 'Breached');
     assert.strictEqual(breached.score, 0);
     assert.strictEqual(breached.tier, 'ERODED');
-  });
-
-  await t.test('validates Wick Protection & ATR Spring Coil compression logic', () => {
-    const analysis = calculateSMCBackend(4420.0);
-    assert.ok(analysis.compression, 'Compression data must exist');
-    assert.strictEqual(typeof analysis.compression.atr1h, 'number');
-    assert.strictEqual(analysis.compression.isSpringCoilActive, true);
-    assert.ok(analysis.wickFilter, 'Wick filter data must exist');
-    assert.strictEqual(typeof analysis.wickFilter.calculatedStopLoss, 'number');
-    assert.strictEqual(analysis.wickFilter.isRRApproved, true);
   });
 });

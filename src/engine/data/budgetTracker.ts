@@ -46,8 +46,8 @@ export const DEFAULT_BUDGETS: readonly BudgetConfig[] = [
   // FRED: 120/hour
   { sourceId: 'fred', limit: 120, period: 'hour', reservePercent: 0.2 },
 
-  // Gate.io REST: 300/10s → treat as ~1800/min
-  { sourceId: 'gateio-rest', limit: 1800, period: 'minute', reservePercent: 0.2 },
+  // TradingView WebSocket Relay: practical unlimited
+  { sourceId: 'tradingview-relay', limit: Infinity, period: 'second', reservePercent: 0 },
 ];
 
 function periodMs(period: BudgetPeriod): number {

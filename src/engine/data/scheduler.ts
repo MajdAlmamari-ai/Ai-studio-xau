@@ -27,9 +27,9 @@ export interface SourceSchedule {
 }
 
 export interface SchedulerConfig {
-  readonly spotXauUsd: number;        // Gold-API
-  readonly futuresXauUsdt: number;    // Gate.io futures
-  readonly candlesM15: number;        // Gate.io REST
+  readonly spotXauUsd: number;        // TradingView Spot Relay
+  readonly futuresXauUsdt: number;    // TradingView COMEX:GC1! Futures
+  readonly candlesM15: number;        // Yahoo Finance / TV Candles
   readonly candlesH1: number;
   readonly candlesH4: number;
   readonly candlesD1: number;

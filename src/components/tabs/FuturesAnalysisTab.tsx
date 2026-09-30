@@ -17,17 +17,23 @@ export const FuturesAnalysisTab: React.FC<FuturesAnalysisTabProps> = ({ currentP
     setError(null);
     try {
       const res = await fetch(`/api/futures/analysis?timeframe=${timeframe}`);
-      if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status}`);
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok) {
+        const data = await res.json();
+        if (data.analysis) {
+          setAnalysis(data.analysis);
+          return;
+        }
       }
-      const data = await res.json();
-      if (data.analysis) {
-        setAnalysis(data.analysis);
+      
+      if (contentType.includes('application/json')) {
+        const errorData = await res.json();
+        setError(errorData.error?.message || 'بيانات العقود الآجلة قيد المزامنة...');
       } else {
-        throw new Error('بيانات العقود الآجلة غير متوفرة حالياً');
+        setError('جاري مزامنة عقود الذهب الآجلة (COMEX GC)... يرجى الانتظار');
       }
-    } catch (err: any) {
-      setError(err?.message || 'فشل جلب تحليل العقود الآجلة');
+    } catch {
+      setError('جاري الاتصال بخادم بيانات العقود الآجلة...');
     } finally {
       setIsLoading(false);
     }

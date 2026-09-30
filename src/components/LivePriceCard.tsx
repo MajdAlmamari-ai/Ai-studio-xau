@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { GoldPriceData, SMCConfig } from '../types';
 import { triggerAutoCalibration, setAutoCalibratePricingMode } from '../services/goldApiService';
+import { AuditModeBacktestCard } from './AuditModeBacktestCard';
 
 interface LivePriceCardProps {
   priceData: GoldPriceData | null;
@@ -84,13 +85,13 @@ export const LivePriceCard: React.FC<LivePriceCardProps> = ({
     }
   };
 
-  // Instant Auto-Calibration to Gate CFD (XAUUSD)
+  // Instant Auto-Calibration to TradingView Live
   const handleTriggerAutoCalibration = async () => {
     setIsCalibrating(true);
     setCalibrationSuccessMessage(null);
     try {
       const res = await triggerAutoCalibration();
-      setCalibrationSuccessMessage(res.messageAr || 'تم الضبط التلقائي الحي بنجاح');
+      setCalibrationSuccessMessage(res.messageAr || 'تم الضبط التلقائي الحي مع TradingView بنجاح');
       onRefreshPrice();
       setTimeout(() => setCalibrationSuccessMessage(null), 4000);
     } catch {
@@ -100,18 +101,18 @@ export const LivePriceCard: React.FC<LivePriceCardProps> = ({
     }
   };
 
-  // Switch Calibration Mode (CFD vs Spot vs Manual)
-  const handleModeChange = async (mode: 'gateio_cfd' | 'gateio_spot') => {
+  // Switch Calibration Mode (TradingView vs Yahoo vs Manual)
+  const handleModeChange = async (mode: 'tradingview_live' | 'yahoo_historical') => {
     setIsCalibrating(true);
     try {
-      await setAutoCalibratePricingMode(mode);
+      await setAutoCalibratePricingMode(mode as any);
       onRefreshPrice();
     } finally {
       setIsCalibrating(false);
     }
   };
 
-  const isCfdMode = priceData?.source === 'gateio_cfd' || priceData?.pricingMode === 'gateio_cfd';
+  const isLiveTvMode = priceData?.source === 'tradingview' || priceData?.pricingMode === 'tradingview_live';
 
   return (
     <div className="bg-[#12141B] border border-[#1A1D26] rounded-xl p-4 sm:p-5 shadow-lg space-y-4">
@@ -337,6 +338,15 @@ export const LivePriceCard: React.FC<LivePriceCardProps> = ({
               />
             </div>
           </div>
+
+          {/* Audit Mode & Randomized 70/30 Backtest against Firestore Data */}
+          <div className="pt-2">
+            <AuditModeBacktestCard
+              config={config}
+              onUpdateConfig={onUpdateConfig}
+              currentPrice={currentPrice ?? 4465.0}
+            />
+          </div>
         </div>
       )}
 
@@ -355,12 +365,12 @@ export const LivePriceCard: React.FC<LivePriceCardProps> = ({
             id="scenario-live-api-btn"
             onClick={handleTriggerAutoCalibration}
             className={`px-2.5 py-1.5 rounded-lg text-[11px] border transition text-center ${
-              activeScenario.includes('Gate CFD') || activeScenario.includes('الضبط التلقائي')
+              activeScenario.includes('TradingView') || activeScenario.includes('الضبط التلقائي')
                 ? 'bg-amber-400/10 border-amber-400 text-amber-300 font-bold'
                 : 'bg-[#0A0C10] border-[#1A1D26] text-zinc-300 hover:bg-[#1A1D26]'
             }`}
           >
-            الضبط التلقائي (Gate CFD الحي)
+            الضبط التلقائي (TradingView الحي)
           </button>
 
           <button

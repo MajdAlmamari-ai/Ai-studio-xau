@@ -1,6 +1,6 @@
 import { getCachedSpotPrice, getActivePricingMode } from './pricingService';
 import { logger } from './loggerService';
-import { fetchGateIoCandlesticks } from './gateIoService';
+import { fetchYahooHistoricalCandles, YahooCandle } from './yahooFinanceService';
 
 export type ChartTimeframe = '4H' | '1D' | '1W' | '1M';
 
@@ -457,19 +457,20 @@ export async function getCandlesForTimeframe(
     return cached.data;
   }
 
-  const gateIntervalMap: Record<ChartTimeframe, string> = {
-    '4H': '4h',
-    '1D': '1d',
-    '1W': '7d',
-    '1M': '30d',
+  const yahooIntervalMap: Record<ChartTimeframe, { interval: string; range: string }> = {
+    '4H': { interval: '60m', range: '1mo' },
+    '1D': { interval: '1d', range: '3mo' },
+    '1W': { interval: '1wk', range: '1y' },
+    '1M': { interval: '1mo', range: '2y' },
   };
 
   let candles: CandleData[] = [];
   try {
-    const market = getActivePricingMode() === 'gateio_cfd' ? 'futures' : 'spot';
-    const gateCandles = await fetchGateIoCandlesticks(market, gateIntervalMap[requestedTimeframe], 40);
-    if (Array.isArray(gateCandles) && gateCandles.length > 5) {
-      candles = gateCandles.map((gc, idx, arr) => {
+    const config = yahooIntervalMap[requestedTimeframe] || { interval: '60m', range: '1mo' };
+    const yahooData = await fetchYahooHistoricalCandles('GC=F', config.interval, config.range);
+    if (yahooData && Array.isArray(yahooData.candles) && yahooData.candles.length > 5) {
+      const rawCandles = yahooData.candles.slice(-50); // take recent 50 bars
+      candles = rawCandles.map((gc, idx, arr) => {
         const prev = idx > 0 ? arr[idx - 1] : undefined;
         const change = Number((gc.close - gc.open).toFixed(2));
         const changePercent = Number(((change / gc.open) * 100).toFixed(2));
@@ -508,10 +509,10 @@ export async function getCandlesForTimeframe(
       });
     }
   } catch (err: any) {
-    logger.warn('GATEIO', `Gate.io Spot candles fetch fallback: ${err?.message || err}`);
+    logger.warn('YAHOO', `Yahoo Finance historical candles fetch warning: ${err?.message || err}`);
   }
 
-  // If fetch failed or yielded few candles, use dynamic realistic fallback anchored to Gate.io spot price
+  // If fetch failed or yielded few candles, use dynamic realistic fallback anchored to spot price
   if (candles.length < 10) {
     candles = generateFallbackCandles(requestedTimeframe, spotPrice);
   }
@@ -545,8 +546,8 @@ export async function getCandlesForTimeframe(
     latestCandle,
     summary,
     allTimeframesSummary,
-    symbol: 'XAU/USD Spot',
-    source: 'Gate.io API v4 (XAU/USD Spot - PAXG/USDT)',
+    symbol: 'COMEX GC=F (عقود الذهب الآجلة)',
+    source: 'Yahoo Finance (COMEX Gold Futures GC=F)',
     updatedAt: new Date().toISOString(),
   };
 

@@ -316,7 +316,7 @@ export function useMarketData(currentBias: 'BULLISH' | 'BEARISH' | 'NEUTRAL') {
       symbol: 'XAU/USD (معايرة يدوية)',
       name: `سعر محاكاة يدوي (${label})`,
       updatedAt: new Date().toISOString(),
-      source: 'gateio_cfd',
+      source: 'tradingview',
       isOffline: false,
       statusMessageAr: `سعر يدوي تجريبي: $${validPrice.toFixed(2)}`,
       change24h: -1.80,
@@ -336,7 +336,7 @@ export function useMarketData(currentBias: 'BULLISH' | 'BEARISH' | 'NEUTRAL') {
   };
 
   /**
-   * Automatic Calibration: Instantly locks the entire system to Gate CFD (XAUUSD)
+   * Automatic Calibration: Instantly locks the entire system to TradingView Live
    */
   const calibrateToCfd = async () => {
     isCustomScenario.current = false;
@@ -346,7 +346,7 @@ export function useMarketData(currentBias: 'BULLISH' | 'BEARISH' | 'NEUTRAL') {
       if (res.quote) {
         lastKnownPriceRef.current = res.quote.price;
         setPriceData(res.quote);
-        setActiveScenario('الضبط التلقائي نشط ومطابق لشارت Gate CFD (XAUUSD) الحي');
+        setActiveScenario('الضبط التلقائي نشط ومطابق لشبكة TradingView المؤسساتية الحية');
         if (typeof res.quote.price === 'number') {
           fetchLiveGoldFutures(res.quote.price).then(setFuturesData).catch(() => {});
           fetchScenarioProjections({ currentPrice: res.quote.price, atr: null, bias: currentBiasRef.current }).then(setScenarioData).catch(() => {});
@@ -361,9 +361,9 @@ export function useMarketData(currentBias: 'BULLISH' | 'BEARISH' | 'NEUTRAL') {
   };
 
   /**
-   * Switch calibration pricing mode (Gate CFD vs Spot vs Manual)
+   * Switch calibration pricing mode (TradingView vs Yahoo vs Manual)
    */
-  const switchPricingMode = async (mode: 'gateio_cfd' | 'gateio_spot' | 'manual', manualPrice?: number) => {
+  const switchPricingMode = async (mode: 'tradingview_live' | 'yahoo_historical' | 'manual', manualPrice?: number) => {
     if (mode === 'manual') {
       isCustomScenario.current = true;
     } else {
@@ -389,7 +389,7 @@ export function useMarketData(currentBias: 'BULLISH' | 'BEARISH' | 'NEUTRAL') {
   };
 
   /**
-   * Resumes live HTTP polling from Gate.io API
+   * Resumes live data feed from TradingView / Yahoo Finance
    */
   const resumeLiveFeed = () => {
     isCustomScenario.current = false;

@@ -72,10 +72,14 @@ export const SystemDiagnosticsCard: React.FC = () => {
         limit,
         search: searchQuery.trim() || undefined,
       });
-      setLogs(res.logs);
-      setMetrics(res.metrics);
-    } catch (err) {
-      console.error('Error loading diagnostics data:', err);
+      if (res && res.logs) {
+        setLogs(res.logs);
+      }
+      if (res && res.metrics) {
+        setMetrics(res.metrics);
+      }
+    } catch {
+      // Handled silently by fallback
     } finally {
       setIsLoading(false);
     }
@@ -261,22 +265,22 @@ export const SystemDiagnosticsCard: React.FC = () => {
               </span>
             </div>
 
-            {/* Gate.io Cache Hits */}
+            {/* Yahoo Historical Cache Hits */}
             <div className="bg-[#0A0C10] p-3 rounded-lg border border-[#1A1D26]">
               <div className="flex items-center justify-between text-zinc-400 text-xs mb-1">
                 <span className="flex items-center gap-1">
                   <Flame className="w-3.5 h-3.5 text-purple-400" />
-                  <span>كاش Gate.io</span>
+                  <span>كاش ياهو فاينانس (Yahoo GC)</span>
                 </span>
                 <span className="text-[10px] text-purple-400 font-mono">
-                  1.5s TTL
+                  60s TTL
                 </span>
               </div>
               <div className="text-base sm:text-lg font-black font-mono text-purple-300">
-                {metrics.cacheStats.gateIoHits} <span className="text-xs text-zinc-500 font-normal">Hits</span>
+                {metrics.cacheStats.yahooHits ?? 0} <span className="text-xs text-zinc-500 font-normal">Hits</span>
               </div>
               <span className="text-[10px] text-zinc-500 font-mono block mt-0.5">
-                Misses: {metrics.cacheStats.gateIoMisses}
+                Misses: {metrics.cacheStats.yahooMisses ?? 0}
               </span>
             </div>
 
@@ -360,7 +364,8 @@ export const SystemDiagnosticsCard: React.FC = () => {
             >
               <option value="ALL">كافة الأقسام</option>
               <option value="SMC_ENGINE">محرك SMC</option>
-              <option value="GATEIO">بوابة Gate.io</option>
+              <option value="YAHOO">ياهو فاينانس (Yahoo GC)</option>
+              <option value="TRADINGVIEW">شبكة TradingView</option>
               <option value="CME_ORDER_FLOW">أوردر فلو CME</option>
               <option value="HTTP_API">طلبات HTTP API</option>
               <option value="RISK_SAFEGUARD">قواطع المخاطر</option>

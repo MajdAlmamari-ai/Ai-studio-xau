@@ -167,6 +167,7 @@ export const DEFAULT_SMC_CONFIG: SMCConfig = {
   slOffsetBuy: 4,
   tpOffsetSell: 10,
   slOffsetSell: 4,
+  auditMode: false,
 };
 
 /**

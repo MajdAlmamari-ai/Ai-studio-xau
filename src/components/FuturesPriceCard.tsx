@@ -72,12 +72,16 @@ export const FuturesPriceCard: React.FC<FuturesPriceCardProps> = ({
           <span className="text-[11px] text-zinc-400 block mb-1">سعر العقد الآجل (GC)</span>
           <div className="flex items-baseline gap-1">
             <span className="text-xl sm:text-2xl font-black font-mono text-amber-400">
-              ${(item.futuresPrice || 4476.90).toFixed(2)}
+              {item.futuresPrice !== null && item.futuresPrice !== undefined
+                ? `$${item.futuresPrice.toFixed(2)}`
+                : effectiveSpot
+                ? `$${(effectiveSpot + 8.40).toFixed(2)}`
+                : '---'}
             </span>
             <span className="text-[10px] text-zinc-500 font-mono">USD</span>
           </div>
           <span className="text-[10px] text-emerald-400 flex items-center gap-0.5 mt-1 font-mono">
-            <ArrowUpRight className="w-3 h-3" /> +$16.20 اليوم
+            <ArrowUpRight className="w-3 h-3" /> {spread !== null ? `${spread >= 0 ? `+${spread.toFixed(2)}` : spread.toFixed(2)}$ فرق الأساس` : 'مزامنة نشطة'}
           </span>
         </div>
 

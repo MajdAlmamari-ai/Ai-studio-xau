@@ -33,8 +33,9 @@ export interface SystemMetrics {
     activeConnections: number;
   };
   cacheStats: {
-    gateIoHits: number;
-    gateIoMisses: number;
+    yahooHits: number;
+    yahooMisses: number;
+    tvRelayHits?: number;
     smcCalculations: number;
     candleCacheHits: number;
   };
@@ -66,12 +67,68 @@ export async function fetchSystemLogs(filter?: {
   if (filter?.search) params.append('search', filter.search);
 
   const url = `/api/system/logs${params.toString() ? `?${params.toString()}` : ''}`;
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(`Failed to fetch system logs: ${res.statusText}`);
+  try {
+    const res = await fetch(url, {
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to fetch system logs: ${res.statusText}`);
+    }
+    return await res.json();
+  } catch (err: any) {
+    // Graceful fallback to prevent client crash during dev server reload or transient network errors
+    return {
+      logs: [
+        {
+          id: 'log_fallback',
+          timestamp: new Date().toISOString(),
+          timestampMs: Date.now(),
+          level: 'WARN',
+          category: 'DIAGNOSTICS',
+          message: 'جاري محاولة إعادة الاتصال بمركز السجلات والتشخيص...',
+          details: { error: err?.message || 'Network error' },
+        },
+      ],
+      count: 1,
+      metrics: {
+        uptimeSeconds: 0,
+        uptimeFormatted: '0h 0m 0s',
+        memory: {
+          rssMb: 0,
+          heapTotalMb: 0,
+          heapUsedMb: 0,
+          externalMb: 0,
+          heapUtilizationPct: 0,
+        },
+        cpuLoadEstimatePct: 0,
+        network: {
+          totalRequests: 0,
+          errorRequests: 0,
+          errorRatePct: 0,
+          avgLatencyMs: 0,
+          activeConnections: 0,
+        },
+        cacheStats: {
+          yahooHits: 0,
+          yahooMisses: 0,
+          tvRelayHits: 0,
+          smcCalculations: 0,
+          candleCacheHits: 0,
+        },
+        safeguards: {
+          circuitBreakerTripped: false,
+          killSwitchActive: false,
+          rateLimitBlocks: 0,
+        },
+        timestamp: new Date().toISOString(),
+      },
+      timestamp: new Date().toISOString(),
+    };
   }
-  return res.json();
 }
+
 
 export async function fetchSystemMetrics(): Promise<SystemMetrics> {
   const res = await fetch('/api/system/metrics');

@@ -12,7 +12,7 @@ export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'AUDIT' | 'METRIC';
 
 export type LogCategory = 
   | 'SMC_ENGINE' 
-  | 'GATEIO' 
+  | 'TRADINGVIEW' 
   | 'CME_ORDER_FLOW' 
   | 'RISK_SAFEGUARD' 
   | 'CIRCUIT_BREAKER' 
@@ -21,7 +21,9 @@ export type LogCategory =
   | 'TELEGRAM' 
   | 'SYSTEM'
   | 'UNIT_TEST'
-  | 'BENCHMARK';
+  | 'BENCHMARK'
+  | 'YAHOO'
+  | 'TRADINGVIEW';
 
 export interface LogEntry {
   id: string;
@@ -54,8 +56,9 @@ export interface SystemPerformanceMetrics {
     activeConnections: number;
   };
   cacheStats: {
-    gateIoHits: number;
-    gateIoMisses: number;
+    yahooHits: number;
+    yahooMisses: number;
+    tvRelayHits: number;
     smcCalculations: number;
     candleCacheHits: number;
   };
@@ -83,8 +86,9 @@ class LoggerService {
 
   // Cache stats
   public cacheStats = {
-    gateIoHits: 0,
-    gateIoMisses: 0,
+    yahooHits: 0,
+    yahooMisses: 0,
+    tvRelayHits: 0,
     smcCalculations: 0,
     candleCacheHits: 0,
   };

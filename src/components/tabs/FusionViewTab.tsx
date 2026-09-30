@@ -13,17 +13,26 @@ export const FusionViewTab: React.FC = () => {
     setError(null);
     try {
       const res = await fetch(`/api/fusion/analysis?timeframe=${timeframe}`);
-      if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.status === 'LIVE') {
+          setFusion(data);
+          return;
+        }
       }
-      const data = await res.json();
-      if (data.status === 'LIVE') {
-        setFusion(data);
+      
+      // If server returned non-ok status (e.g. 503 during historical backfill)
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        const errorJson = await res.json();
+        const msg = errorJson.error?.message || 'جاري تجميع وحفظ شموع الذهب لتأكيد طبقة الدمج والمقارنة...';
+        setError(msg);
       } else {
-        throw new Error(data.error?.message || 'بيانات الدمج والمقارنة غير متوفرة');
+        // Returned HTML (e.g. 502/503 proxy page or Vite reload)
+        setError('جاري تهيئة خادم التحليل المؤسساتي... يرجى الانتظار ثوانٍ قليلة');
       }
-    } catch (err: any) {
-      setError(err?.message || 'فشل جلب تحليل الدمج والمقارنة');
+    } catch {
+      setError('جاري الاتصال بخادم التحليل والدمج المؤسساتي...');
     } finally {
       setIsLoading(false);
     }

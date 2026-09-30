@@ -3,6 +3,7 @@ import { Header, ActiveTabType } from './components/Header';
 import { SetupGuideModal } from './components/SetupGuideModal';
 import { SignalsArchiveModal } from './components/SignalsArchiveModal';
 import { DownloadProjectModal } from './components/DownloadProjectModal';
+import { QuantConnectLabModal } from './components/QuantConnectLabModal';
 import { TabContentRenderer } from './components/TabContentRenderer';
 import { TabNavigation, MainTabType } from './components/TabNavigation';
 
@@ -52,6 +53,7 @@ export default function App() {
   const [isGuideOpen, setIsGuideOpen] = useState<boolean>(false);
   const [isArchiveOpen, setIsArchiveOpen] = useState<boolean>(false);
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState<boolean>(false);
+  const [isQuantConnectModalOpen, setIsQuantConnectModalOpen] = useState<boolean>(false);
 
   const [smcConfig, setSmcConfig] = useState<SMCConfig>(() => {
     const saved = localStorage.getItem('xauusd_smc_config');
@@ -175,6 +177,7 @@ export default function App() {
         isTriggering={isTriggering}
         onOpenGuide={() => setIsGuideOpen(true)}
         onOpenDownloadModal={() => setIsDownloadModalOpen(true)}
+        onOpenQuantConnectLab={() => setIsQuantConnectModalOpen(true)}
       />
 
       {/* Primary Fusion & Engine Navigation Tabs */}
@@ -252,6 +255,13 @@ export default function App() {
             </button>
             <span>•</span>
             <button
+              onClick={() => setIsQuantConnectModalOpen(true)}
+              className="text-cyan-300 hover:text-cyan-200 font-bold flex items-center gap-1 cursor-pointer"
+            >
+              مختبر QuantConnect (2025 vs 2026) ⚡
+            </button>
+            <span>•</span>
+            <button
               onClick={() => setIsDownloadModalOpen(true)}
               className="text-amber-300 hover:text-amber-200 font-bold flex items-center gap-1"
             >
@@ -285,6 +295,13 @@ export default function App() {
       <DownloadProjectModal
         isOpen={isDownloadModalOpen}
         onClose={() => setIsDownloadModalOpen(false)}
+      />
+
+      {/* QuantConnect Institutional Lab Modal (2025 vs 2026 + Monte Carlo) */}
+      <QuantConnectLabModal
+        isOpen={isQuantConnectModalOpen}
+        onClose={() => setIsQuantConnectModalOpen(false)}
+        currentPrice={currentPrice}
       />
 
     </div>

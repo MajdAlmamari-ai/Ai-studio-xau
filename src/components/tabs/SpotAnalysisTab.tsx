@@ -17,17 +17,23 @@ export const SpotAnalysisTab: React.FC<SpotAnalysisTabProps> = ({ currentPrice }
     setError(null);
     try {
       const res = await fetch(`/api/spot/analysis?timeframe=${timeframe}`);
-      if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status}`);
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok) {
+        const data = await res.json();
+        if (data.analysis) {
+          setAnalysis(data.analysis);
+          return;
+        }
       }
-      const data = await res.json();
-      if (data.analysis) {
-        setAnalysis(data.analysis);
+      
+      if (contentType.includes('application/json')) {
+        const errorData = await res.json();
+        setError(errorData.error?.message || 'بيانات التحليل الفوري قيد التجميع والمزامنة...');
       } else {
-        throw new Error('بيانات التحليل الفوري غير متوفرة حالياً');
+        setError('جاري مزامنة شموع السعر الفوري (OANDA)... يرجى الانتظار');
       }
-    } catch (err: any) {
-      setError(err?.message || 'فشل جلب التحليل الفوري');
+    } catch {
+      setError('جاري الاتصال بخادم بيانات السعر الفوري...');
     } finally {
       setIsLoading(false);
     }

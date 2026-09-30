@@ -21,7 +21,9 @@ import {
   Server,
   Download,
   Globe,
-  Activity
+  Activity,
+  SlidersHorizontal,
+  Terminal,
 } from 'lucide-react';
 import { GoldPriceData, FuturesPriceData } from '../types';
 import { downloadProjectZip } from '../utils/downloadHelper';
@@ -45,7 +47,8 @@ export type ActiveTabType =
   | 'chat' 
   | 'telegram' 
   | 'repository'
-  | 'diagnostics';
+  | 'diagnostics'
+  | 'configuration';
 
 interface HeaderProps {
   priceData: GoldPriceData | null;
@@ -58,6 +61,7 @@ interface HeaderProps {
   isTriggering: boolean;
   onOpenGuide: () => void;
   onOpenDownloadModal?: () => void;
+  onOpenQuantConnectLab?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -71,6 +75,7 @@ export const Header: React.FC<HeaderProps> = ({
   isTriggering,
   onOpenGuide,
   onOpenDownloadModal,
+  onOpenQuantConnectLab,
 }) => {
   const formatTime = (secs: number) => {
     const m = Math.floor(secs / 60);
@@ -119,6 +124,7 @@ export const Header: React.FC<HeaderProps> = ({
     { id: 'chat', label: 'مساعد Gemini 3.8 Flash', icon: <Sparkles className="w-3.5 h-3.5" />, badge: 'AI', category: 'ai' },
     
     // 4. Automation & Ops
+    { id: 'configuration', label: 'الإعدادات والتدقيق (Config & Audit)', icon: <SlidersHorizontal className="w-3.5 h-3.5" />, badge: 'Audit 70/30 🛡️', category: 'automation' },
     { id: 'telegram', label: 'بوت تيليجرام والأتمتة', icon: <Send className="w-3.5 h-3.5" />, category: 'automation' },
     { id: 'repository', label: 'مستودع الكود GitHub', icon: <FolderGit2 className="w-3.5 h-3.5" />, category: 'automation' },
     { id: 'diagnostics', label: 'تشخيص الأداء والسجلات (DevOps)', icon: <Activity className="w-3.5 h-3.5" />, badge: 'Logs & Heap ⚡', category: 'automation' },
@@ -280,6 +286,17 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <BookOpen className="w-3.5 h-3.5 text-amber-400" />
               <span>دليل التثبيت</span>
+            </button>
+
+            {/* QuantConnect Lab Modal Button */}
+            <button
+              id="open-quantconnect-lab-btn"
+              onClick={() => onOpenQuantConnectLab ? onOpenQuantConnectLab() : undefined}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-blue-500/20 to-purple-500/20 hover:from-blue-500/30 hover:to-purple-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-bold transition active:scale-95 shadow-sm cursor-pointer"
+              title="مختبر QuantConnect LEAN واختبار 2025 مقابل 2026 مع مونت كارلو"
+            >
+              <Terminal className="w-3.5 h-3.5 text-cyan-400" />
+              <span>مختبر QuantConnect (2025 vs 2026)</span>
             </button>
 
             {/* Direct Full Project Codebase (JSON / ZIP) Download Button */}

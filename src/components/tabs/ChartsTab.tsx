@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { BarChart2, Layers, RefreshCw, Zap } from 'lucide-react';
 import { CandlestickChartCard } from '../CandlestickChartCard';
+import { StatisticalSimulationCard } from '../StatisticalSimulationCard';
 
 interface ChartsTabProps {
   currentPrice: number;
@@ -16,9 +17,13 @@ export const ChartsTab: React.FC<ChartsTabProps> = ({ currentPrice }) => {
   const handleRefresh = () => {
     setIsRefreshing(true);
     fetch('/api/fusion/analysis?timeframe=15m')
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) return null;
+        const ct = res.headers.get('content-type') || '';
+        return ct.includes('application/json') ? res.json() : null;
+      })
       .then((data) => {
-        if (data.basisAnalysis?.current) {
+        if (data && data.basisAnalysis?.current) {
           setBasisDiff(data.basisAnalysis.current);
         }
       })
@@ -127,6 +132,9 @@ export const ChartsTab: React.FC<ChartsTabProps> = ({ currentPrice }) => {
           </div>
         </div>
       </div>
+
+      {/* Statistical Simulation & Risk Efficiency Tool (Sharpe & Sortino Lab) */}
+      <StatisticalSimulationCard currentPrice={currentPrice} />
     </div>
   );
 };

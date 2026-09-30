@@ -365,7 +365,7 @@ export function generateSingleFileMarkdown(bundle: ProjectSourceBundle): string 
   lines.push('');
   lines.push('## 🏛️ ملخص المعمارية المؤسساتية والمفاهيم المالية المعتمدة (Architectural & SMC Directives)');
   lines.push('1. **بيانات الذهب الفوري وعقود كومكس COMEX GC:**');
-  lines.push('   - جلب أسعار Spot XAU/USD الفورية عبر Gate.io Spot API و Pax Gold.');
+  lines.push('   - جلب أسعار Spot XAU/USD الفورية وعقود COMEX GC الحية عبر شبكة TradingView والبيانات التاريخية من Yahoo Finance.');
   lines.push('   - تدفق أحجام عقود الذهب الآجلة الحقيقية من بورصة شيكاغو (COMEX GC Futures) مع حساب دلتا الأوامر التراكمية (CVD Delta) ونسبة عدم توازن الأوامر (Imbalance Ratio).');
   lines.push('2. **محرك SMC متعدد الأطر الزمنية (5 Timeframes):**');
   lines.push('   - فريمات: الأسبوعي (1W)، اليومي (1D)، الأربع ساعات (4H)، الساعة (1H)، والـ 15 دقيقة (15M).');

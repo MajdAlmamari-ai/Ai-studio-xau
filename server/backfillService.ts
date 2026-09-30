@@ -31,6 +31,21 @@ import { SYMBOLS } from './tvRelay';
 import { logger } from './loggerService';
 import { DataUnavailableError } from './priceVolumeEngine';
 
+/**
+ * Validate Yahoo Finance usage constraints:
+ * - Allowed ONLY for '1d' and '1w'
+ * - FORBIDDEN for '1m', '5m', '15m', '30m', '1h', '4h'
+ */
+export function validateYahooUsage(timeframe: string): void {
+  const allowed = ['1d', '1w'];
+  if (!allowed.includes(timeframe)) {
+    throw new DataUnavailableError(
+      'YAHOO_FORBIDDEN_TF',
+      `Yahoo fallback not allowed for ${timeframe}. Only 1d and 1w permitted.`
+    );
+  }
+}
+
 export const BACKFILL_TARGETS: Record<Timeframe, number> = {
   '1m': 5000,
   '5m': 5000,
@@ -55,89 +70,91 @@ export interface BackfillSummary {
 export async function runInitialBackfill(
   customRepo?: CandleRepository,
 ): Promise<BackfillSummary[]> {
-  const symbol = SYMBOLS.FUTURES; // COMEX:GC1! ONLY
+  const symbols = [SYMBOLS.FUTURES, SYMBOLS.SPOT_PRIMARY];
   const repo = customRepo || new CandleRepository('./db/xauusd.sqlite');
   const fetcher = new TvHistoryFetcher(repo);
-
-  logger.info('WEBSOCKET', `Starting initial history verification for ${symbol}...`);
 
   const results: BackfillSummary[] = [];
   const timeframes = Object.keys(BACKFILL_TARGETS) as Timeframe[];
 
-  for (const tf of timeframes) {
-    const target = BACKFILL_TARGETS[tf];
-    let countBefore = 0;
+  for (const symbol of symbols) {
+    logger.info('WEBSOCKET', `Starting initial history verification for ${symbol}...`);
 
-    try {
-      countBefore = repo.count(symbol, tf);
-    } catch (err: any) {
-      logger.error('SYSTEM', `Database access failed for ${symbol} [${tf}]: ${err?.message || err}`);
-      throw new DataUnavailableError('DB_UNAVAILABLE', `Database error checking candles for ${tf}`);
-    }
+    for (const tf of timeframes) {
+      const target = BACKFILL_TARGETS[tf];
+      let countBefore = 0;
 
-    if (countBefore >= target) {
-      logger.info('WEBSOCKET', `Timeframe [${tf}] is fully populated: ${countBefore}/${target} bars.`);
-      results.push({
-        symbol,
-        timeframe: tf,
-        targetCount: target,
-        initialCount: countBefore,
-        finalCount: countBefore,
-        status: 'SUFFICIENT',
-      });
-      continue;
-    }
+      try {
+        countBefore = repo.count(symbol, tf);
+      } catch (err: any) {
+        logger.error('SYSTEM', `Database access failed for ${symbol} [${tf}]: ${err?.message || err}`);
+        throw new DataUnavailableError('DB_UNAVAILABLE', `Database error checking candles for ${tf}`);
+      }
 
-    logger.info('WEBSOCKET', `Timeframe [${tf}] has ${countBefore}/${target} bars. Fetching history from TradingView...`);
-
-    try {
-      const outcome = await fetcher.fetchHistory(symbol, tf, target);
-
-      const countAfter = repo.count(symbol, tf);
-
-      if (outcome.ok && countAfter >= target) {
-        logger.info('WEBSOCKET', `Successfully backfilled [${tf}]: now ${countAfter}/${target} bars.`);
+      if (countBefore >= target) {
+        logger.info('WEBSOCKET', `[${symbol}] Timeframe [${tf}] is fully populated: ${countBefore}/${target} bars.`);
         results.push({
           symbol,
           timeframe: tf,
           targetCount: target,
           initialCount: countBefore,
-          finalCount: countAfter,
-          status: 'BACKFILLED',
+          finalCount: countBefore,
+          status: 'SUFFICIENT',
         });
-      } else {
-        let errorMsg = `Received ${countAfter} bars (target: ${target})`;
-        if (!outcome.ok) {
-          errorMsg = (outcome as { ok: false; error: HistoryFetchError }).error.detailsAr;
+        continue;
+      }
+
+      logger.info('WEBSOCKET', `[${symbol}] Timeframe [${tf}] has ${countBefore}/${target} bars. Fetching history from TradingView...`);
+
+      try {
+        const outcome = await fetcher.fetchHistory(symbol, tf, target);
+
+        const countAfter = repo.count(symbol, tf);
+
+        if (outcome.ok && countAfter >= target) {
+          logger.info('WEBSOCKET', `Successfully backfilled [${symbol} ${tf}]: now ${countAfter}/${target} bars.`);
+          results.push({
+            symbol,
+            timeframe: tf,
+            targetCount: target,
+            initialCount: countBefore,
+            finalCount: countAfter,
+            status: 'BACKFILLED',
+          });
+        } else {
+          let errorMsg = `Received ${countAfter} bars (target: ${target})`;
+          if (!outcome.ok) {
+            errorMsg = (outcome as { ok: false; error: HistoryFetchError }).error.detailsAr;
+          }
+          logger.warn('WEBSOCKET', `[${symbol}] Timeframe [${tf}] partially filled: ${countAfter}/${target} bars. (${errorMsg})`);
+          results.push({
+            symbol,
+            timeframe: tf,
+            targetCount: target,
+            initialCount: countBefore,
+            finalCount: countAfter,
+            status: 'PARTIAL',
+            error: errorMsg,
+          });
         }
-        logger.warn('WEBSOCKET', `Timeframe [${tf}] partially filled: ${countAfter}/${target} bars. (${errorMsg})`);
+      } catch (fetchErr: any) {
+        const countAfter = repo.count(symbol, tf);
+        logger.error('WEBSOCKET', `Failed to backfill [${symbol} ${tf}] from TradingView: ${fetchErr?.message || fetchErr}`);
         results.push({
           symbol,
           timeframe: tf,
           targetCount: target,
           initialCount: countBefore,
           finalCount: countAfter,
-          status: 'PARTIAL',
-          error: errorMsg,
+          status: 'FAILED',
+          error: fetchErr?.message || String(fetchErr),
         });
       }
-    } catch (fetchErr: any) {
-      const countAfter = repo.count(symbol, tf);
-      logger.error('WEBSOCKET', `Failed to backfill [${tf}] from TradingView: ${fetchErr?.message || fetchErr}`);
-      results.push({
-        symbol,
-        timeframe: tf,
-        targetCount: target,
-        initialCount: countBefore,
-        finalCount: countAfter,
-        status: 'FAILED',
-        error: fetchErr?.message || String(fetchErr),
-      });
     }
   }
 
   const successCount = results.filter((r) => r.status === 'SUFFICIENT' || r.status === 'BACKFILLED').length;
-  logger.info('WEBSOCKET', `Initial backfill finished for ${symbol}: ${successCount}/${timeframes.length} timeframes ready.`);
+  logger.info('WEBSOCKET', `Initial backfill finished: ${successCount}/${results.length} total tasks ready.`);
 
   return results;
 }

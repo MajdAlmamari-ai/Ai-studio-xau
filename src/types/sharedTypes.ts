@@ -1,5 +1,5 @@
 /**
- * Client-Side Shared Types for Gate.io & Project Bundles
+ * Client-Side Shared Types for TradingView, Yahoo & Project Bundles
  * Pure TypeScript types with NO Node.js runtime dependencies (like process, fs, path).
  */
 
@@ -40,111 +40,6 @@ export function candleToNormalized(c: Candle): NormalizedCandle {
     close: c.close,
     volume: c.volume ?? 0,
   };
-}
-
-export interface GateIoSpotTicker {
-  symbol: string;
-  currencyPair: string;
-  last: number;
-  lowestAsk: number;
-  highestBid: number;
-  changePercentage: number;
-  baseVolume: number;
-  quoteVolume: number;
-  high24h: number;
-  low24h: number;
-  updatedAt: string;
-}
-
-export interface GateIoFuturesTicker {
-  contract: string;
-  last: number;
-  markPrice: number;
-  indexPrice: number;
-  fundingRate: number;
-  fundingRatePct: number;
-  volume24h: number;
-  volume24hUsd: number;
-  highestBid: number;
-  lowestAsk: number;
-  changePercentage: number;
-  changePrice: number;
-  high24h: number;
-  low24h: number;
-  updatedAt: string;
-}
-
-export interface GateIoOrderBookLevel {
-  price: number;
-  size: number;
-  total: number;
-}
-
-export interface GateIoOrderBookData {
-  market: 'spot' | 'futures';
-  symbol: string;
-  bids: GateIoOrderBookLevel[];
-  asks: GateIoOrderBookLevel[];
-  totalBidSize: number;
-  totalAskSize: number;
-  imbalanceRatio: number;
-  imbalanceVerdictAr: string;
-  spread: number;
-  timestamp: string;
-}
-
-export interface GateIoSpotTradeItem {
-  id: string;
-  createTime: number;
-  timeFormatted: string;
-  side: 'buy' | 'sell';
-  amount: number;
-  price: number;
-  volumeUsd: number;
-}
-
-export interface GateIoSpotTradeFlow {
-  trades: GateIoSpotTradeItem[];
-  buyVolume: number;
-  sellVolume: number;
-  totalVolume: number;
-  cumulativeDelta: number;
-  tickVelocity: number;
-  orderFlowSpeedAr: string;
-  timestamp: string;
-}
-
-export interface GateIoSpotMasterOverview {
-  status: 'ONLINE' | 'DEGRADED' | 'FALLBACK';
-  source: 'Gate.io API v4 (Official)';
-  symbol: 'XAU/USD Spot';
-  currencyPair: 'PAXG_USDT';
-  ticker: GateIoSpotTicker;
-  orderBook: GateIoOrderBookData;
-  tradeFlow: GateIoSpotTradeFlow;
-  lastSync: string;
-}
-
-export interface GateIoMarketOverview {
-  status: 'ONLINE' | 'DEGRADED' | 'FALLBACK';
-  source: 'Gate.io API v4 (Official)';
-  apiEndpoint: string;
-  spot: GateIoSpotTicker;
-  futures: GateIoFuturesTicker;
-  basisMetrics: {
-    basisSpread: number;
-    basisSpreadPips: number;
-    basisPct: number;
-    state: 'CONTANGO' | 'BACKWARDATION';
-    stateLabelAr: string;
-    descriptionAr: string;
-  };
-  orderBook: {
-    spot: GateIoOrderBookData;
-    futures: GateIoOrderBookData;
-  };
-  tradeFlow: GateIoSpotTradeFlow;
-  lastSync: string;
 }
 
 export interface ProjectSourceFile {

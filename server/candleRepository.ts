@@ -17,6 +17,7 @@ import {
   SpotCandle,
   FuturesCandle,
 } from '../src/engine/types/branded';
+import { DataValidator } from './data/DataValidator';
 
 export function normalizeToCanonicalTimeframe(tf: string): Timeframe {
   // Map legacy TV resolutions (e.g. '1', '5', '15', '30', '60', '240', '1D', '1W')
@@ -81,7 +82,7 @@ export interface IngestResult {
 export class CandleRepository {
   private db: Database.Database;
 
-  constructor(dbPath: string) {
+  constructor(dbPath: string = './db/xauusd.sqlite') {
     const dir = dirname(dbPath);
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true });
@@ -297,17 +298,28 @@ export class CandleRepository {
     const canonicalTf = normalizeToCanonicalTimeframe(timeframe);
     const now = Date.now();
 
+    const validCandles: typeof candles = [];
+    let prevSpot: RawCandle | null = null;
     for (const c of candles) {
-      PriceSourceEnforcer.enforceSpot({
-        time: c.time,
-        open: c.open,
-        high: c.high,
-        low: c.low,
-        close: c.close,
-        volume: c.volume ?? 0,
-        source: 'SPOT',
-      });
+      try {
+        DataValidator.validateCandle(c, prevSpot);
+        PriceSourceEnforcer.enforceSpot({
+          time: c.time,
+          open: c.open,
+          high: c.high,
+          low: c.low,
+          close: c.close,
+          volume: c.volume ?? 0,
+          source: 'SPOT',
+        });
+        validCandles.push(c);
+        prevSpot = c;
+      } catch (err: any) {
+        console.warn(`[DataValidator] Skipped invalid spot candle at time ${c.time}: ${err?.message || err}`);
+      }
     }
+
+    if (validCandles.length === 0) return 0;
 
     const stmtSpot = this.db.prepare(`
       INSERT INTO spot_candles (timeframe, time, open, high, low, close, volume, source, ingested_at)
@@ -322,14 +334,14 @@ export class CandleRepository {
         ingested_at = excluded.ingested_at
     `);
 
-    const tx = this.db.transaction((items: typeof candles) => {
+    const tx = this.db.transaction((items: typeof validCandles) => {
       for (const c of items) {
         stmtSpot.run(canonicalTf, c.time, c.open, c.high, c.low, c.close, c.volume ?? 0, now);
       }
     });
 
-    tx(candles);
-    return candles.length;
+    tx(validCandles);
+    return validCandles.length;
   }
 
   countSpotCandles(symbolOrTf: string, tf?: string): number {
@@ -441,18 +453,29 @@ export class CandleRepository {
     const canonicalTf = normalizeToCanonicalTimeframe(timeframe);
     const now = Date.now();
 
+    const validCandles: typeof candles = [];
+    let prevFutures: RawCandle | null = null;
     for (const c of candles) {
-      PriceSourceEnforcer.enforceFutures({
-        time: c.time,
-        open: c.open,
-        high: c.high,
-        low: c.low,
-        close: c.close,
-        volume: c.volume ?? 0,
-        openInterest: c.openInterest ?? undefined,
-        source: 'FUTURES',
-      });
+      try {
+        DataValidator.validateCandle(c, prevFutures);
+        PriceSourceEnforcer.enforceFutures({
+          time: c.time,
+          open: c.open,
+          high: c.high,
+          low: c.low,
+          close: c.close,
+          volume: c.volume ?? 0,
+          openInterest: c.openInterest ?? undefined,
+          source: 'FUTURES',
+        });
+        validCandles.push(c);
+        prevFutures = c;
+      } catch (err: any) {
+        console.warn(`[DataValidator] Skipped invalid futures candle at time ${c.time}: ${err?.message || err}`);
+      }
     }
+
+    if (validCandles.length === 0) return 0;
 
     const stmtFutures = this.db.prepare(`
       INSERT INTO futures_candles (timeframe, time, open, high, low, close, volume, open_interest, source, ingested_at)
@@ -468,14 +491,14 @@ export class CandleRepository {
         ingested_at = excluded.ingested_at
     `);
 
-    const tx = this.db.transaction((items: typeof candles) => {
+    const tx = this.db.transaction((items: typeof validCandles) => {
       for (const c of items) {
         stmtFutures.run(canonicalTf, c.time, c.open, c.high, c.low, c.close, c.volume ?? 0, c.openInterest ?? null, now);
       }
     });
 
-    tx(candles);
-    return candles.length;
+    tx(validCandles);
+    return validCandles.length;
   }
 
   countFuturesCandles(symbolOrTf: string, tf?: string): number {
@@ -681,3 +704,5 @@ export class CandleRepository {
     this.db.close();
   }
 }
+
+export const candleRepository = new CandleRepository();

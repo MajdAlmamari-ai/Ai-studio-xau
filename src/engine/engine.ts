@@ -5,7 +5,7 @@
  * It runs all modules in order and returns a unified analysis.
  *
  * Usage:
- *   const candles = await fetchGateIoCandlesticks('futures', '15m', 200);
+ *   const candles = await fetchCandles('GC=F', '15m', 200);
  *   const analysis = runRealSMCEngine(candles);
  *
  * Deterministic. No Math.random.

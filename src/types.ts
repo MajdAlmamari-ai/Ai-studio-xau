@@ -20,7 +20,7 @@ export interface GoldPriceData {
   symbol: string;
   name: string;
   updatedAt: string;
-  source: 'gateio_cfd' | 'gateio_spot' | 'live_api' | 'fallback' | 'scenario' | 'tencent_gc' | 'eastmoney_gc' | 'cloud_engine' | 'gold-api' | 'tradingview' | 'yahoo_gc';
+  source: 'tradingview' | 'yahoo_gc' | 'live_api' | 'fallback' | 'scenario' | 'tencent_gc' | 'eastmoney_gc' | 'cloud_engine' | 'gold-api';
   isOffline?: boolean;
   statusMessageAr?: string;
   change24h?: number;
@@ -34,7 +34,7 @@ export interface GoldPriceData {
   spreadOffsetFormatted?: string;
   referencePrice?: number | null;
   vsa?: VSAAbsorptionData;
-  pricingMode?: 'gateio_cfd' | 'gateio_spot' | 'manual';
+  pricingMode?: 'tradingview_live' | 'yahoo_historical' | 'manual';
   cfdPrice?: number;
   spotPrice?: number;
   basisSpread?: number;
@@ -123,6 +123,7 @@ export interface SMCConfig {
   slOffsetBuy: number;
   tpOffsetSell: number;
   slOffsetSell: number;
+  auditMode?: boolean; // When active, forces 70/30 randomized split backtest against Firestore data
 }
 
 export type MarketBias = 'BULLISH' | 'BEARISH' | 'NEUTRAL';

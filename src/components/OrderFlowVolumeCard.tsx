@@ -1,6 +1,7 @@
-import React from 'react';
-import { Activity, BarChart2, CheckCircle2, TrendingUp, ShieldCheck, Layers, HelpCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Activity, BarChart2, CheckCircle2, TrendingUp, ShieldCheck, Layers, HelpCircle, RefreshCw } from 'lucide-react';
 import { OrderFlowVolumeData, FuturesPriceData } from '../types';
+import { fetchLiveOrderFlow } from '../services/orderFlowVolumeService';
 
 interface OrderFlowVolumeCardProps {
   data?: OrderFlowVolumeData;
@@ -13,14 +14,43 @@ export const OrderFlowVolumeCard: React.FC<OrderFlowVolumeCardProps> = ({
   futuresData,
   spotPrice,
 }) => {
+  const [liveData, setLiveData] = useState<OrderFlowVolumeData | undefined>(data);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+
+  const futuresPrice = futuresData?.futuresPrice ?? Number((spotPrice + 8.40).toFixed(2));
+  const bias = data?.deltaBias === 'STRONG_SELLERS' ? 'BEARISH' : 'BULLISH';
+
+  const loadLiveOrderFlow = async () => {
+    setIsLoading(true);
+    try {
+      const fetched = await fetchLiveOrderFlow(spotPrice, futuresPrice, bias);
+      if (fetched) {
+        setLiveData(fetched);
+      }
+    } catch {
+      // fallback
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (data) {
+      setLiveData(data);
+    }
+    loadLiveOrderFlow();
+  }, [spotPrice, futuresPrice]);
+
+  const activeData = liveData || data;
+
   // Fallback if data is not provided yet
-  const cmeVol = data?.cmeRealVolume || 196420;
-  const tickVol = data?.tickVolume || 318200;
-  const cvd = data?.cvdDelta || 4280;
-  const deltaBias = data?.deltaBias || 'STRONG_BUYERS';
-  const imbalance = data?.imbalanceRatio || 2.45;
-  const cotComm = data?.cotCommercialsNet || '+198,400 عقود (تحوط البنوك وصناع السوق)';
-  const isConfirmed = data?.confluenceConfirmed ?? true;
+  const cmeVol = activeData?.cmeRealVolume || 196420;
+  const tickVol = activeData?.tickVolume || 318200;
+  const cvd = activeData?.cvdDelta || 4280;
+  const deltaBias = activeData?.deltaBias || 'STRONG_BUYERS';
+  const imbalance = activeData?.imbalanceRatio || 2.45;
+  const cotComm = activeData?.cotCommercialsNet || '+198,400 عقود (تحوط البنوك وصناع السوق)';
+  const isConfirmed = activeData?.confluenceConfirmed ?? true;
 
   const isPositiveDelta = cvd >= 0;
 
@@ -46,6 +76,14 @@ export const OrderFlowVolumeCard: React.FC<OrderFlowVolumeCardProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={loadLiveOrderFlow}
+            disabled={isLoading}
+            className="p-1.5 rounded-lg bg-[#181C26] hover:bg-[#202534] text-gray-400 hover:text-white border border-gray-700 transition cursor-pointer"
+            title="تحديث تدفق الأوامر وحجم CME"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-amber-400' : ''}`} />
+          </button>
           <span className="text-xs px-2.5 py-1 rounded bg-[#181C26] border border-gray-700 text-gray-300">
             بورصة شيكاغو للمشتقات (CME GC)
           </span>

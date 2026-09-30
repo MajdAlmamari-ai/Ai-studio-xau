@@ -251,6 +251,7 @@ export class TvLiveUpdater {
     for (const tf of fastTimeframes) {
       try {
         await this.historyFetcher.fetchHistory(SYMBOLS.FUTURES, tf, 5);
+        await this.historyFetcher.fetchHistory(SYMBOLS.SPOT_PRIMARY, tf, 5);
       } catch {
         // non-blocking
       }

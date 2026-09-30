@@ -9,7 +9,9 @@
  */
 
 import { fetchLiveGoldSpot, calculateFuturesQuote, getCachedSpotPrice } from './pricingService';
-import { calculateSMCBackend, SMCBackendConfig } from './smcQuantService';
+import { futuresEngine } from './engines/FuturesEngine';
+import { candleRepository } from './candleRepository';
+import { DataUnavailableError } from '../src/engine/enforcer/PriceSourceEnforcer';
 import { 
   addServerSignal, 
   addServerExecutionLog, 
@@ -48,7 +50,7 @@ let totalCyclesCompleted = 0;
 export async function executeInstitutionalServerCycle(
   options: {
     overridePrice?: number;
-    customConfig?: Partial<SMCBackendConfig>;
+    customConfig?: Record<string, any>;
     telegramBotToken?: string;
     telegramChatId?: string;
   } = {}
@@ -95,15 +97,26 @@ export async function executeInstitutionalServerCycle(
     );
   }
 
-  // 2. Structural & Quantitative SMC Analysis
-  const platformConfig = getServerPlatformConfig();
-  const activeSMCConfig = options.customConfig || platformConfig.smcConfig || {};
-  const analysis = calculateSMCBackend(spotPrice, activeSMCConfig);
+  // 2. Structural & Quantitative SMC Analysis via FuturesEngine (COMEX:GC1!)
+  const futuresCandles = candleRepository.getFuturesCandles('15m', 100);
+  if (!futuresCandles || futuresCandles.length < 30) {
+    throw new DataUnavailableError('INSUFFICIENT_CANDLES', `Need 30+ candles, got ${futuresCandles?.length ?? 0}`);
+  }
+  const analysis = futuresEngine.analyzeCandles(futuresCandles);
+  const recommendation = futuresEngine.getRecommendation(analysis);
+
+  const bias = analysis.direction === 'LONG' ? 'BULLISH' : analysis.direction === 'SHORT' ? 'BEARISH' : 'NEUTRAL';
+  const action = analysis.direction === 'LONG' ? 'BUY_LIMIT' : analysis.direction === 'SHORT' ? 'SELL_LIMIT' : 'WAIT';
+  const currentPriceVal = analysis.currentPrice ?? spotPrice;
+  const entryVal = recommendation.entry ?? currentPriceVal;
+  const stopLossVal = recommendation.sl ?? (analysis.direction === 'LONG' ? currentPriceVal - 10 : currentPriceVal + 10);
+  const takeProfitVal = recommendation.tp1 ?? (analysis.direction === 'LONG' ? currentPriceVal + 20 : currentPriceVal - 20);
+  const rrVal = recommendation.rr ?? 2.0;
 
   addLog(
     'المرحلة 2: التحليل الهيكلي',
     'success',
-    `اكتمل تحليل SMC: الاتجاه [${analysis.bias}] | الهيكل [${analysis.structure}] | سيولة BSL: $${analysis.bsl.toFixed(2)} | سيولة SSL: $${analysis.ssl.toFixed(2)} | نضارة أوردر بلوك الطلب: ${analysis.bullishOB.freshnessScore}%`
+    `اكتمل تحليل SMC: الاتجاه [${analysis.direction}] | النقاط [${analysis.score}/100] | CVD: ${analysis.cvd?.cumulativeDelta ?? 0} | التوافق: ${analysis.confluence?.join(', ') || 'N/A'}`
   );
 
   // 3. Safeguard Validation & Signal Archiving
@@ -129,27 +142,27 @@ export async function executeInstitutionalServerCycle(
   }
 
   // R:R Floor Check
-  if (analysis.rrNumeric < activeSafeguards.riskRewardMinRatio) {
+  if (rrVal < activeSafeguards.riskRewardMinRatio || action === 'WAIT') {
     addLog(
       'المرحلة 3: إدارة المخاطر',
       'warning',
-      `تم إلغاء الصفقة تلقائياً لعدم استيفاء الحد الأدنى لنسبة العائد للمخاطرة 1:${activeSafeguards.riskRewardMinRatio} (المتوفر: ${analysis.riskRewardRatio}).`
+      `تم إلغاء الصفقة تلقائياً لعدم استيفاء الحد الأدنى لنسبة العائد للمخاطرة 1:${activeSafeguards.riskRewardMinRatio} أو حالة الانتظار (R:R: 1:${rrVal}).`
     );
   } else {
     // Save to server signal store
     savedSignal = addServerSignal({
-      bias: analysis.bias,
-      action: analysis.action,
-      currentPrice: analysis.currentPrice,
-      entryMin: analysis.entryZone.min,
-      entryMax: analysis.entryZone.max,
-      stopLoss: analysis.stopLoss,
-      takeProfit: analysis.takeProfit,
-      riskReward: analysis.riskRewardRatio,
-      rrNumeric: analysis.rrNumeric,
-      confluenceScore: analysis.confluenceScore,
-      structure: analysis.structure,
-      reason: analysis.reason,
+      bias,
+      action,
+      currentPrice: currentPriceVal,
+      entryMin: entryVal - 1.0,
+      entryMax: entryVal + 1.0,
+      stopLoss: stopLossVal,
+      takeProfit: takeProfitVal,
+      riskReward: `1:${rrVal.toFixed(2)}`,
+      rrNumeric: rrVal,
+      confluenceScore: analysis.score,
+      structure: analysis.direction === 'LONG' ? 'BOS_CONFIRMED' : 'CHOCH_DETECTED',
+      reason: recommendation.reasoning.join(' | '),
       status: 'ACTIVE',
       origin: 'server_cycle',
     });
@@ -157,7 +170,7 @@ export async function executeInstitutionalServerCycle(
     addLog(
       'المرحلة 3: حفظ الإشارة',
       'success',
-      `تم اعتماد وتوثيق الإشارة المؤسساتية #${savedSignal.id}: ${analysis.action} بسعر الدخول $${analysis.entryZone.min}-$${analysis.entryZone.max} وهدف $${analysis.takeProfit} مع وقف خسارة محمي $${analysis.stopLoss}.`
+      `تم اعتماد وتوثيق الإشارة المؤسساتية #${savedSignal.id}: ${action} بسعر الدخول $${entryVal} وهدف $${takeProfitVal} مع وقف خسارة محمي $${stopLossVal}.`
     );
   }
 
@@ -165,6 +178,7 @@ export async function executeInstitutionalServerCycle(
   let telegramDispatched = false;
   let telegramError: string | undefined;
 
+  const platformConfig = getServerPlatformConfig();
   const token = options.telegramBotToken || platformConfig.telegramConfig?.botToken || process.env.TELEGRAM_BOT_TOKEN;
   const chat = options.telegramChatId || platformConfig.telegramConfig?.chatId || process.env.TELEGRAM_CHAT_ID;
 
@@ -172,24 +186,24 @@ export async function executeInstitutionalServerCycle(
     const reportHtml = `
 <b>🔔 توصية XAU/USD مؤسساتية مؤكدة (دورة الـ 15 دقيقة)</b>
 
-<b>🧭 الإشارة:</b> <code>${analysis.action}</code>
-<b>📊 الاتجاه العام:</b> <code>${analysis.bias === 'BULLISH' ? 'صاعد مؤسساتي 🟢' : 'هابط تصحيحي 🔴'}</code>
-<b>💰 السعر الفوري:</b> <code>$${analysis.currentPrice.toFixed(2)}</code>
+<b>🧭 الإشارة:</b> <code>${action}</code>
+<b>📊 الاتجاه العام:</b> <code>${bias === 'BULLISH' ? 'صاعد مؤسساتي 🟢' : 'هابط تصحيحي 🔴'}</code>
+<b>💰 السعر الفوري:</b> <code>$${currentPriceVal.toFixed(2)}</code>
 
 <b>🎯 خطة الدخول والأهداف:</b>
-• <b>نطاق الدخول:</b> <code>$${analysis.entryZone.min.toFixed(2)} - $${analysis.entryZone.max.toFixed(2)}</code>
-• <b>وقف الخسارة المحمي:</b> <code>$${analysis.stopLoss.toFixed(2)}</code>
-• <b>الهدف المؤسساتي (TP):</b> <code>$${analysis.takeProfit.toFixed(2)}</code>
-• <b>العائد للمخاطرة (R:R):</b> <code>${analysis.riskRewardRatio}</code>
+• <b>نطاق الدخول:</b> <code>$${(entryVal - 1.0).toFixed(2)} - $${(entryVal + 1.0).toFixed(2)}</code>
+• <b>وقف الخسارة المحمي:</b> <code>$${stopLossVal.toFixed(2)}</code>
+• <b>الهدف المؤسساتي (TP):</b> <code>$${takeProfitVal.toFixed(2)}</code>
+• <b>العائد للمخاطرة (R:R):</b> <code>1:${rrVal.toFixed(2)}</code>
 
-<b>🏛️ كتل الأوامر ونضارة المناطق:</b>
-• <b>أوردر بلوك الطلب:</b> <code>$${analysis.bullishOB.min.toFixed(2)} - $${analysis.bullishOB.max.toFixed(2)}</code> (نضارة: ${analysis.bullishOB.freshnessScore}%)
-• <b>أوردر بلوك العرض:</b> <code>$${analysis.bearishOB.min.toFixed(2)} - $${analysis.bearishOB.max.toFixed(2)}</code> (نضارة: ${analysis.bearishOB.freshnessScore}%)
+<b>🏛️ بيانات تدفق العقود والـ CVD:</b>
+• <b>دلتا تدفق الأوامر CVD:</b> <code>${analysis.cvd?.cumulativeDelta ?? 0}</code>
+• <b>درجة التوافق والمصداقية:</b> <code>${analysis.score}%</code>
 
 <b>🧠 القراءة والتحليل:</b>
-${analysis.reason}
+${recommendation.reasoning.join('\n• ')}
 
-<i>⏱️ تم التوليد بواسطة محرك SMC Quant المؤسساتي السحابي</i>
+<i>⏱️ تم التوليد بواسطة محرك SMC Quant المؤسساتي السحابي (FuturesEngine)</i>
     `.trim();
 
     try {

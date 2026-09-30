@@ -22,6 +22,7 @@ import { CloudMarketSyncCard } from './CloudMarketSyncCard';
 import { CandlestickChartCard } from './CandlestickChartCard';
 import { MultiTimeframeSMCCard } from './MultiTimeframeSMCCard';
 import { SystemDiagnosticsCard } from './SystemDiagnosticsCard';
+import { AuditModeBacktestCard } from './AuditModeBacktestCard';
 import { Globe } from 'lucide-react';
 
 import { 
@@ -364,6 +365,17 @@ export const TabContentRenderer: React.FC<TabContentRendererProps> = ({
       return (
         <div className="space-y-4">
           <SystemDiagnosticsCard />
+        </div>
+      );
+
+    case 'configuration':
+      return (
+        <div className="space-y-4">
+          <AuditModeBacktestCard
+            config={smcConfig}
+            onUpdateConfig={onUpdateConfig}
+            currentPrice={currentPrice}
+          />
         </div>
       );
 
