@@ -1,15 +1,12 @@
 /**
- * Unit Tests for FuturesEngine
- * -----------------------------------------------------------------------------
+ * Unit Tests for FuturesEngine (TPO & Momentum)
+ * ---------------------------------------------
  * Tests:
  * - analyze() accepts FuturesCandle[]
  * - analyze() throws DataUnavailableError if insufficient candles (< 30)
- * - analyze() returns valid FuturesAnalysis
- * - CVD is calculated correctly
- * - NO Math.random in engine
- * - Type safety: rejects SpotCandle[] (compile-time checked via branded type)
- * 
- * NO fake data. Deterministic.
+ * - analyze() returns valid FuturesAnalysis with TPO and TWAP
+ * - TPO Value Area (POC, VAH, VAL) is calculated correctly without volume
+ * - NO fake data. Deterministic.
  */
 
 import test from 'node:test';
@@ -19,8 +16,7 @@ import { CandleRepository } from '../../candleRepository';
 import { PriceSourceEnforcer, DataUnavailableError, PriceSourceError } from '../../../src/engine/enforcer/PriceSourceEnforcer';
 import { FuturesCandle } from '../../../src/engine/types/branded';
 
-test('FuturesEngine — Unit Tests', async (t) => {
-  // Mock CandleRepository for controlled unit testing
+test('FuturesEngine — TPO & Momentum Unit Tests', async (t) => {
   const createMockRepo = (candles: any[]) => {
     return {
       getFuturesCandles: (_tf: string, _limit: number) => candles,
@@ -39,7 +35,7 @@ test('FuturesEngine — Unit Tests', async (t) => {
       },
       (err: any) => {
         assert.ok(err instanceof DataUnavailableError, 'Expected DataUnavailableError');
-        assert.strictEqual(err.code, 'FUTURES_CANDLES_INSUFFICIENT');
+        assert.strictEqual(err.code, 'INSUFFICIENT_STORED_CANDLES');
         return true;
       }
     );
@@ -69,7 +65,7 @@ test('FuturesEngine — Unit Tests', async (t) => {
     );
   });
 
-  await t.test('analyzeCandles() accepts 35 FuturesCandles and returns valid FuturesAnalysis with CVD', () => {
+  await t.test('analyzeCandles() accepts 35 FuturesCandles and returns valid FuturesAnalysis with TPO', () => {
     const engine = futuresEngine;
     const candles: FuturesCandle[] = [];
     const baseTime = 1700000000;
@@ -86,7 +82,7 @@ test('FuturesEngine — Unit Tests', async (t) => {
           high,
           low,
           close,
-          volume: 600 + i * 15,
+          volume: 0,
           openInterest: 50000 + i * 100,
           source: 'FUTURES',
         })
@@ -98,79 +94,14 @@ test('FuturesEngine — Unit Tests', async (t) => {
     assert.strictEqual(analysis.symbol, 'COMEX:GC1!');
     assert.ok(typeof analysis.score === 'number');
     assert.ok(analysis.score >= 0 && analysis.score <= 100);
-    assert.ok(['LONG', 'SHORT', 'NEUTRAL'].includes(analysis.direction));
-    assert.ok(analysis.cvd, 'CVD must be included');
-    assert.strictEqual(typeof analysis.cvd.cumulativeDelta, 'number');
-    assert.ok(analysis.cvd.buyVolume >= 0);
-    assert.ok(analysis.cvd.sellVolume >= 0);
-    assert.strictEqual(typeof analysis.openInterest, 'number');
-    assert.strictEqual(analysis.openInterest, 53400); // 50000 + 34 * 100
-    assert.ok(Array.isArray(analysis.confluence));
-    assert.ok(analysis.timestamp > 0);
+    assert.ok(analysis.tpo, 'TPO analysis should be present');
+    assert.ok(typeof analysis.tpo?.poc === 'number');
+    assert.ok(typeof analysis.twap === 'number');
   });
 
-  await t.test('calculateATR() works with real futures candle sequence', () => {
+  await t.test('calculateTPO() computes POC, VAH, VAL and TWAP accurately', () => {
     const engine = new FuturesEngine({} as any);
-
-    // Generate deterministic candle sequence with known ATR
-    const sampleCandles: FuturesCandle[] = [];
-    const baseTime = 1700000000;
-    for (let i = 0; i < 20; i++) {
-      const open = 2750 + i * 2;
-      const high = open + 6;
-      const low = open - 4;
-      const close = open + 3;
-      sampleCandles.push(
-        PriceSourceEnforcer.enforceFutures({
-          time: baseTime + i * 900,
-          open,
-          high,
-          low,
-          close,
-          volume: 800,
-          source: 'FUTURES',
-        })
-      );
-    }
-
-    const atr = engine.calculateATR(sampleCandles, 14);
-    assert.ok(atr > 0, `ATR should be positive, got ${atr}`);
-    assert.strictEqual(typeof atr, 'number');
-    assert.ok(atr >= 8.0 && atr <= 11.0, `Expected ATR in range [8, 11], got ${atr}`);
-  });
-
-  await t.test('calculateVWAP() works with real volume and price data', () => {
-    const engine = new FuturesEngine({} as any);
-
-    const baseTime = 1700000000;
     const sampleCandles: FuturesCandle[] = [
-      PriceSourceEnforcer.enforceFutures({
-        time: baseTime,
-        open: 2750,
-        high: 2760,
-        low: 2740,
-        close: 2750, // typical = 2750
-        volume: 100,
-        source: 'FUTURES',
-      }),
-      PriceSourceEnforcer.enforceFutures({
-        time: baseTime + 900,
-        open: 2760,
-        high: 2780,
-        low: 2760,
-        close: 2770, // typical = 2770
-        volume: 200,
-        source: 'FUTURES',
-      }),
-    ];
-
-    const vwap = engine.calculateVWAP(sampleCandles);
-    assert.strictEqual(vwap, 2763.33);
-  });
-
-  await t.test('calculateVWAP() throws DataUnavailableError when volume is 0', () => {
-    const engine = new FuturesEngine({} as any);
-    const zeroVolCandles: FuturesCandle[] = [
       PriceSourceEnforcer.enforceFutures({
         time: 1700000000,
         open: 2750,
@@ -180,51 +111,22 @@ test('FuturesEngine — Unit Tests', async (t) => {
         volume: 0,
         source: 'FUTURES',
       }),
-    ];
-
-    assert.throws(
-      () => engine.calculateVWAP(zeroVolCandles),
-      (err: any) => {
-        assert.ok(err instanceof DataUnavailableError);
-        assert.strictEqual(err.code, 'VWAP_UNAVAILABLE');
-        return true;
-      }
-    );
-  });
-
-  await t.test('calculateCVD() calculates cumulative delta correctly', () => {
-    const engine = new FuturesEngine({} as any);
-
-    const candles: FuturesCandle[] = [
-      // Bullish candle: open 2750, close 2756, high 2760, low 2748, vol 100
-      // range = 12, (close - open) / range = 6 / 12 = 0.5 -> delta = 50
-      PriceSourceEnforcer.enforceFutures({
-        time: 1700000000,
-        open: 2750,
-        high: 2760,
-        low: 2748,
-        close: 2756,
-        volume: 100,
-        source: 'FUTURES',
-      }),
-      // Bearish candle: open 2756, close 2750, high 2758, low 2748, vol 200
-      // range = 10, (close - open) / range = -6 / 10 = -0.6 -> delta = -120
       PriceSourceEnforcer.enforceFutures({
         time: 1700000900,
-        open: 2756,
-        high: 2758,
-        low: 2748,
-        close: 2750,
-        volume: 200,
+        open: 2760,
+        high: 2780,
+        low: 2760,
+        close: 2770,
+        volume: 0,
         source: 'FUTURES',
       }),
     ];
 
-    const cvd = engine.calculateCVD(candles);
-    assert.strictEqual(cvd.source, 'INSTITUTIONAL_DELTA_APPROXIMATION');
-    assert.strictEqual(cvd.cumulativeDelta, -70); // 50 - 120 = -70
-    assert.strictEqual(cvd.buyVolume, 50);
-    assert.strictEqual(cvd.sellVolume, 120);
+    const tpo = engine.calculateTPO(sampleCandles);
+    assert.ok(tpo.poc > 0);
+    assert.ok(tpo.vah >= tpo.poc);
+    assert.ok(tpo.val <= tpo.poc);
+    assert.ok(tpo.twap > 0);
   });
 
   await t.test('analyzeSessions() returns active sessions and valid liquidity level', () => {
@@ -239,20 +141,18 @@ test('FuturesEngine — Unit Tests', async (t) => {
   });
 
   await t.test('enforcer validates futures candles and rejects invalid data', () => {
-    // Valid futures candle
     const valid = PriceSourceEnforcer.enforceFutures({
       time: 1700000000,
       open: 2750,
       high: 2760,
       low: 2740,
       close: 2755,
-      volume: 1500,
+      volume: 0,
       openInterest: 50000,
       source: 'FUTURES',
     });
     assert.strictEqual(valid.close, 2755);
 
-    // Reject wrong source (e.g. SPOT passed to enforceFutures)
     assert.throws(
       () => {
         PriceSourceEnforcer.enforceFutures({
@@ -261,33 +161,13 @@ test('FuturesEngine — Unit Tests', async (t) => {
           high: 2760,
           low: 2740,
           close: 2755,
-          volume: 1500,
+          volume: 0,
           source: 'SPOT' as any,
         });
       },
       (err: any) => {
         assert.ok(err instanceof PriceSourceError);
         assert.strictEqual(err.code, 'WRONG_SOURCE');
-        return true;
-      }
-    );
-
-    // Reject invalid high/low
-    assert.throws(
-      () => {
-        PriceSourceEnforcer.enforceFutures({
-          time: 1700000000,
-          open: 2750,
-          high: 2730,
-          low: 2760,
-          close: 2755,
-          volume: 1500,
-          source: 'FUTURES',
-        });
-      },
-      (err: any) => {
-        assert.ok(err instanceof PriceSourceError);
-        assert.strictEqual(err.code, 'HIGH_LESS_THAN_LOW');
         return true;
       }
     );

@@ -2,6 +2,7 @@ import { getCloudGoldState, setManualPrice, CloudGoldState } from './cloudHttpGo
 import { getTvRelay, SYMBOLS } from './tvRelay';
 import { fetchYahooHistoricalCandles } from './yahooFinanceService';
 import { logger } from './loggerService';
+import { resolveBasisAndSyncHealth } from './basisSyncGuardService';
 
 export interface GoldSpotQuote {
   price: number;
@@ -147,11 +148,11 @@ export async function fetchLiveGoldSpot(): Promise<GoldSpotQuote> {
       const spreadPips = Number((spreadVal * 10).toFixed(1));
       const spreadPoints = Math.round(spreadVal * 100);
 
-      // Check futures basis spread from TradingView
+      // Check futures basis spread and sync health via BasisSyncGuard
       const tvFuturesQuote = tvRelay.getQuote(SYMBOLS.FUTURES);
-      const basis = tvFuturesQuote && tvFuturesQuote.price > 0
-        ? Number((tvFuturesQuote.price - p).toFixed(2))
-        : 8.40;
+      const futuresPriceRaw = tvFuturesQuote && tvFuturesQuote.price > 0 ? tvFuturesQuote.price : null;
+      const basisMetrics = resolveBasisAndSyncHealth(p, futuresPriceRaw);
+      const basis = basisMetrics.effectiveBasis;
 
       const quote: GoldSpotQuote = {
         price: p,
@@ -161,7 +162,7 @@ export async function fetchLiveGoldSpot(): Promise<GoldSpotQuote> {
         name: 'TradingView Relay (OANDA:XAUUSD)',
         updatedAt: new Date(tvSpotQuote.timestamp || now).toISOString(),
         source: 'tradingview',
-        statusMessageAr: 'تغذية لحظية مباشرة ونشطة من شبكة TradingView المؤسساتية (OANDA:XAUUSD)',
+        statusMessageAr: basisMetrics.healthMessageAr,
         change24h: tvSpotQuote.changePct || 0.45,
         high24h: Number((p + 15).toFixed(2)),
         low24h: Number((p - 18).toFixed(2)),

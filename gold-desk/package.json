@@ -1,0 +1,30 @@
+{
+  "name": "gold-desk-quant",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "trustedDependencies": ["@duckdb/node-api"],
+  "scripts": {
+    "dev": "tsx watch spot_engine/ts/main.ts",
+    "build": "tsc --noEmit",
+    "start": "node dist/spot_engine/ts/main.js",
+    "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "etl:dukascopy": "python -m spot_engine.py.dukascopy_etl"
+  },
+  "dependencies": {
+    "@duckdb/node-api": "^1.3.0",
+    "ioredis": "^5.4.1",
+    "ws": "^8.18.0",
+    "zod": "^3.23.8",
+    "pino": "^9.3.0",
+    "pino-pretty": "^11.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.5.0",
+    "@types/ws": "^8.5.12",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

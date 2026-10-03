@@ -643,6 +643,29 @@ export interface M15ExecutionState {
   confirmationCandleTime: string;
 }
 
+// 6. 5M Sniper Confirmation Frame - Ultra-Precise Trigger
+export interface M5ConfirmationState {
+  timeframe: '5M';
+  confirmationStatus: 'CONFIRMED_ENTRY' | 'WAITING_5M_CHOH' | 'PENDING_MICRO_SWEEP' | 'INVALIDATED_ON_5M';
+  m5ChohDetected: boolean;
+  m5ChohType: 'BULLISH_5M_CHOH' | 'BEARISH_5M_CHOH' | 'NONE';
+  m5ChohPrice: number;
+  m5MicroSweepDetected: boolean;
+  m5MicroSweepPrice: number;
+  refinedEntryPrice: number;
+  refinedStopLoss: number;
+  refinedStopLossPips: number; // e.g. 25-45 pips instead of 90-140 pips!
+  refinedTakeProfit1: number;
+  refinedTakeProfit2: number;
+  refinedRiskRewardRatio: string; // e.g. 1:3.8
+  rrNumeric: number;
+  microDisplacementBars: number;
+  triggerVerdictAr: string;
+  entryConfirmationRationaleAr: string;
+  candleCloseTime: string;
+  microLiquidityPoolAr: string;
+}
+
 // Unified Multi-Timeframe Engine Model
 export interface MultiTimeframeSMCEngineState {
   currentPrice: number;
@@ -655,5 +678,6 @@ export interface MultiTimeframeSMCEngineState {
   h4Decision: H4DecisionState;
   h1Sweeps: H1LiquiditySweepsState;
   m15Execution: M15ExecutionState;
+  m5Confirmation?: M5ConfirmationState;
 }
 

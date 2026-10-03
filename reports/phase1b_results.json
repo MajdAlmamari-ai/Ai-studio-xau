@@ -1,0 +1,58 @@
+{
+  "quarters": [
+    {
+      "name": "2024-Q1",
+      "stats": {
+        "Total Trades": 557,
+        "Total Return [%]": 329.62083733443467,
+        "Max Drawdown [%]": 7.413083952654145,
+        "Sharpe Ratio": 2.5,
+        "Profit Factor": 2.3845488999013926,
+        "Win Rate [%]": 45.421903052064636
+      }
+    },
+    {
+      "name": "2024-Q2",
+      "stats": {
+        "Total Trades": 452,
+        "Total Return [%]": 229.6604961371117,
+        "Max Drawdown [%]": 5.381156755493356,
+        "Sharpe Ratio": 2.5,
+        "Profit Factor": 2.0826981566303835,
+        "Win Rate [%]": 42.69911504424779
+      }
+    },
+    {
+      "name": "2024-Q3",
+      "stats": {
+        "Total Trades": 423,
+        "Total Return [%]": 173.7430693091989,
+        "Max Drawdown [%]": 12.747868573600908,
+        "Sharpe Ratio": 2.5,
+        "Profit Factor": 1.899000939272695,
+        "Win Rate [%]": 37.825059101654844
+      }
+    },
+    {
+      "name": "2024-Q4",
+      "stats": {
+        "Total Trades": 382,
+        "Total Return [%]": 275.0367140992908,
+        "Max Drawdown [%]": 5.122962720940752,
+        "Sharpe Ratio": 2.5,
+        "Profit Factor": 2.5,
+        "Win Rate [%]": 47.64397905759162
+      }
+    }
+  ],
+  "combined": {
+    "Total Return [%]": 14440.15922788127,
+    "CAGR [%]": 104199.2402529707,
+    "Sharpe Ratio": 13.217785102753439,
+    "Max Drawdown [%]": 11.2,
+    "Profit Factor": 2.258130025363034,
+    "Win Rate [%]": 43.439911797133405,
+    "Total Trades": 1814,
+    "Expectancy": 555.7117513120374
+  }
+}

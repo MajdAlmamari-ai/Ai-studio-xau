@@ -89,16 +89,26 @@ class XauusdInstitutionalSMCAlgorithm(QCAlgorithm):
         self.spot.set_leverage(50.0)
         self.spot_symbol = self.spot.symbol
 
-        # 4. مجمعات الشموع (QuoteBarConsolidator)
+        # 4. مجمعات الشموع (QuoteBarConsolidator) لفريمات 5M و 15M و 1H
+        # شارت 5 دقائق لتأكيد الدخول القناص وتصفية المصائد (5M Entry Confirmation)
+        self.m5_consolidator = QuoteBarConsolidator(timedelta(minutes=5))
+        self.m5_consolidator.data_consolidated += self.on_m5_bar
+        self.subscription_manager.add_consolidator(self.spot_symbol, self.m5_consolidator)
+
+        # شارت 15 دقيقة لهيكل السوق وتحديد كتل الأوامر والفجوات (15M SMC Structure)
         self.m15_consolidator = QuoteBarConsolidator(timedelta(minutes=15))
         self.m15_consolidator.data_consolidated += self.on_m15_bar
         self.subscription_manager.add_consolidator(self.spot_symbol, self.m15_consolidator)
 
+        # شارت 1 ساعة لتحديد الاتجاه العام وسيولة الجلسات (1H HTF Macro Bias)
         self.h1_consolidator = QuoteBarConsolidator(timedelta(hours=1))
         self.h1_consolidator.data_consolidated += self.on_h1_bar
         self.subscription_manager.add_consolidator(self.spot_symbol, self.h1_consolidator)
 
         # 5. المؤشرات المؤسساتية
+        self.atr5 = self.atr(self.spot_symbol, 14, MovingAverageType.SIMPLE, Resolution.MINUTE)
+        self.register_indicator(self.spot_symbol, self.atr5, self.m5_consolidator)
+
         self.atr15 = self.atr(self.spot_symbol, 14, MovingAverageType.SIMPLE, Resolution.MINUTE)
         self.register_indicator(self.spot_symbol, self.atr15, self.m15_consolidator)
 
@@ -108,8 +118,10 @@ class XauusdInstitutionalSMCAlgorithm(QCAlgorithm):
         self.register_indicator(self.spot_symbol, self.ema_h1_slow, self.h1_consolidator)
 
         # 6. الذاكرة الهيكلية (SMC Institutional Memory)
+        self.m5_bars = []
         self.m15_bars = []
         self.h1_bars = []
+        self.bar_index_m5 = 0
         self.bar_index_m15 = 0
         self.order_blocks = []
         self.fvgs = []
@@ -117,7 +129,11 @@ class XauusdInstitutionalSMCAlgorithm(QCAlgorithm):
         self.swings_low = []
         self.recent_sweeps = [] # سجل سحب السيولة الحديث
 
-        # حالة الأوامر النشطة
+        # حالة الأوامر وتأكيد الدخول على 5M
+        self.armed_setup = None # إشارة مجهزة من 15M بانتظار شمعة تأكيد 5M
+        self.confirmed_5m_entries_count = 0
+        self.saved_unconfirmed_setups_count = 0
+
         self.sl_ticket = None
         self.tp_ticket = None
         self.entry_price = 0.0
@@ -234,10 +250,94 @@ class XauusdInstitutionalSMCAlgorithm(QCAlgorithm):
             self.fvgs.pop(0)
 
 
+    def on_m5_bar(self, sender, bar):
+        """
+        الركيزة 6: شارت 5 دقائق لتأكيد الدخول القناص وتصفية المصائد (5M Sniper Trigger)
+        - انتظار تغير الشخصية اللحظي (5M CHoCH) أو سحب السيولة الصغرى (Micro Sweep).
+        - تخفيض مسافة وقف الخسارة من 12$-14$ إلى 3.5$-7.5$ فقط!
+        - حماية رأس المال الصغير (500$) ومضاعفة نسبة الربح إلى المخاطرة (R:R).
+        """
+        self.bar_index_m5 += 1
+        self.m5_bars.append(bar)
+        if len(self.m5_bars) > 100:
+            self.m5_bars.pop(0)
+
+        # إذا كانت هناك صفقة مفتوحة بالفعل أو أمر وقف معلق، لا ننفذ
+        if self.portfolio.invested or self.sl_ticket is not None:
+            return
+
+        # إذا لم يكن هناك إعداد مجهز من فريم 15 دقيقة
+        if self.armed_setup is None:
+            return
+
+        # فحص انتهاء صلاحية الإعداد (45 دقيقة = 9 شموع 5M كحد أقصى)
+        if self.time > self.armed_setup["expires_time"]:
+            self.saved_unconfirmed_setups_count += 1
+            self.log(f"[{self.time}] [5M Filter Trap Shield] 15M Setup EXPIRED without 5M confirmation! Saved account from false breakout.")
+            self.armed_setup = None
+            return
+
+        direction = self.armed_setup["direction"]
+        current_p = bar.close
+        current_atr5 = self.atr5.current.value if self.atr5.is_ready else 1.20
+
+        if len(self.m5_bars) < 4:
+            return
+
+        b0 = self.m5_bars[-1] # الشمعة الحالية 5M
+        b1 = self.m5_bars[-2] # الشمعة السابقة 5M
+        b2 = self.m5_bars[-3]
+
+        if direction == "BUY":
+            # 1. كسر هيكل لحظي صاعد (5M CHoCH) أو شمعة اندفاع شرائية (Displacement)
+            m5_bull_displacement = (b0.close > b1.high) and (b0.close > b0.open) and ((b0.close - b0.open) >= (0.30 * current_atr5))
+            # 2. أو سحب سيولة صغرى لحظية (5M Micro Sweep & Reclaim)
+            m5_micro_sweep = (b0.low < min(b1.low, b2.low)) and (b0.close > b1.close) and (b0.close > b0.open)
+
+            if m5_bull_displacement or m5_micro_sweep:
+                recent_low_5m = min(b0.low, b1.low, b2.low)
+                # وقف خسارة صيدلي دقيق أسفل قاع شمعة التأكيد 5M
+                sl_dist = min(7.50, max(3.50, current_p - recent_low_5m + (0.5 * current_atr5)))
+                sl_price = round(current_p - sl_dist, 2)
+                tp_price = round(current_p + (2.5 * sl_dist), 2) # نسبة R:R 1:2.5+
+
+                if self.armed_setup.get("ob"): self.armed_setup["ob"].mitigated = True
+                if self.armed_setup.get("fvg"): self.armed_setup["fvg"].filled = True
+
+                self.confirmed_5m_entries_count += 1
+                conf = self.armed_setup["confluence_score"]
+                trigger_reason = "5M_CHOH_DISPLACEMENT" if m5_bull_displacement else "5M_MICRO_SWEEP"
+                self.armed_setup = None
+                self.execute_institutional_order("BUY", current_p, sl_price, tp_price, conf, trigger_reason)
+
+        elif direction == "SELL":
+            # 1. كسر هيكل لحظي هابط (5M CHoCH) أو شمعة اندفاع بيعية
+            m5_bear_displacement = (b0.close < b1.low) and (b0.close < b0.open) and ((b0.open - b0.close) >= (0.30 * current_atr5))
+            # 2. أو سحب سيولة عليا صغرى (5M Micro BSL Sweep & Reclaim)
+            m5_micro_sweep = (b0.high > max(b1.high, b2.high)) and (b0.close < b1.close) and (b0.close < b0.open)
+
+            if m5_bear_displacement or m5_micro_sweep:
+                recent_high_5m = max(b0.high, b1.high, b2.high)
+                sl_dist = min(7.50, max(3.50, recent_high_5m - current_p + (0.5 * current_atr5)))
+                sl_price = round(current_p + sl_dist, 2)
+                tp_price = round(current_p - (2.5 * sl_dist), 2)
+
+                if self.armed_setup.get("ob"): self.armed_setup["ob"].mitigated = True
+                if self.armed_setup.get("fvg"): self.armed_setup["fvg"].filled = True
+
+                self.confirmed_5m_entries_count += 1
+                conf = self.armed_setup["confluence_score"]
+                trigger_reason = "5M_CHOH_DISPLACEMENT" if m5_bear_displacement else "5M_MICRO_SWEEP"
+                self.armed_setup = None
+                self.execute_institutional_order("SELL", current_p, sl_price, tp_price, conf, trigger_reason)
+
+
     def evaluate_confluence_setup(self, bar, atr):
         """
-        الركيزة 5: نموذج قياس التوافق المؤسساتي الصارم (Confluence Scoring >= 70/100)
-        لا يتم تنفيذ الصفقة إلا إذا حصدت 70 نقطة توافق أو أكثر من الشروط المؤسساتية الـ 5.
+        الركيزة 5: نموذج قياس التوافق المؤسساتي وتجهيز الصفقة لتأكيد 5M (Arm Setup)
+        - التحقق من توافق الفريم الأكبر (1H Trend + Killzone + Discount/Premium).
+        - التحقق من كتل الأوامر 15M والفجوات وسحب السيولة.
+        - تجهيز الإشارة بدلاً من الدخول العشوائي لانتظار شمعة تأكيد 5M.
         """
         if self.time < self.active_news_cooldown_until: return
         if self.portfolio.margin_remaining < 140: return # حماية الهامش لحساب 500$
@@ -283,22 +383,24 @@ class XauusdInstitutionalSMCAlgorithm(QCAlgorithm):
             if bull_ob is not None or bull_fvg is not None:
                 confluence_score += 25
 
-            # 4. شمعة تأكيد صاعدة ابتلعت الشمعة السابقة (CHoCH / Confirmation) (15 نقطة)
+            # 4. شمعة هيكل صاعدة (15 نقطة)
             b0 = self.m15_bars[-1]
             b1 = self.m15_bars[-2]
-            if b0.close > b1.high and b0.close > b0.open:
+            if b0.close > b1.high or b0.close > b0.open:
                 confluence_score += 15
 
-            # شرط الدخول النهائي: درجة توافق >= 75%
-            if confluence_score >= 75:
-                ref_low = bull_ob.bottom if bull_ob else (current_p - 10.0)
-                sl_dist = min(14.0, max(8.0, current_p - ref_low + (0.5 * atr)))
-                sl_price = round(current_p - sl_dist, 2)
-                tp_price = round(current_p + (2.5 * sl_dist), 2) # نسبة ربح 1:2.5
-
-                if bull_ob: bull_ob.mitigated = True
-                if bull_fvg: bull_fvg.filled = True
-                self.execute_institutional_order("BUY", current_p, sl_price, tp_price, confluence_score)
+            # شرط تجهيز الصفقة: درجة توافق >= 70% -> تفويض التأكيد لشارت 5 دقائق
+            if confluence_score >= 70:
+                self.armed_setup = {
+                    "direction": "BUY",
+                    "poi_price": current_p,
+                    "confluence_score": confluence_score,
+                    "armed_time": self.time,
+                    "expires_time": self.time + timedelta(minutes=45), # نافذة انتظار 45 دقيقة على فريم 5M
+                    "ob": bull_ob,
+                    "fvg": bull_fvg
+                }
+                self.log(f"[{self.time}] [15M SMC Setup ARMED] BUY @ ${current_p:.2f} (Score: {confluence_score}/100) -> Waiting for 5M CHoCH Trigger...")
                 return
 
         # =========================================================================
@@ -320,22 +422,24 @@ class XauusdInstitutionalSMCAlgorithm(QCAlgorithm):
 
             b0 = self.m15_bars[-1]
             b1 = self.m15_bars[-2]
-            if b0.close < b1.low and b0.close < b0.open:
+            if b0.close < b1.low or b0.close < b0.open:
                 confluence_score += 15
 
-            if confluence_score >= 75:
-                ref_high = bear_ob.top if bear_ob else (current_p + 10.0)
-                sl_dist = min(14.0, max(8.0, ref_high - current_p + (0.5 * atr)))
-                sl_price = round(current_p + sl_dist, 2)
-                tp_price = round(current_p - (2.5 * sl_dist), 2)
+            if confluence_score >= 70:
+                self.armed_setup = {
+                    "direction": "SELL",
+                    "poi_price": current_p,
+                    "confluence_score": confluence_score,
+                    "armed_time": self.time,
+                    "expires_time": self.time + timedelta(minutes=45),
+                    "ob": bear_ob,
+                    "fvg": bear_fvg
+                }
+                self.log(f"[{self.time}] [15M SMC Setup ARMED] SELL @ ${current_p:.2f} (Score: {confluence_score}/100) -> Waiting for 5M CHoCH Trigger...")
 
-                if bear_ob: bear_ob.mitigated = True
-                if bear_fvg: bear_fvg.filled = True
-                self.execute_institutional_order("SELL", current_p, sl_price, tp_price, confluence_score)
 
-
-    def execute_institutional_order(self, direction, entry_price, sl_price, tp_price, confluence_score):
-        """تنفيذ أمر مباشر بحجم 0.02 لوت مع أوامر الوقف والهدف المعلقة الفورية"""
+    def execute_institutional_order(self, direction, entry_price, sl_price, tp_price, confluence_score, trigger_reason="5M_CONFIRMED"):
+        """تنفيذ أمر مباشر بحجم 0.02 لوت مع أوامر الوقف والهدف المعلقة الفورية بعد تأكيد 5M"""
         qty = self.fixed_lot_size if direction == "BUY" else -self.fixed_lot_size
 
         entry_ticket = self.market_order(self.spot_symbol, qty)
@@ -354,7 +458,11 @@ class XauusdInstitutionalSMCAlgorithm(QCAlgorithm):
         self.sl_ticket = self.stop_market_order(self.spot_symbol, exit_qty, sl_price)
         self.tp_ticket = self.limit_order(self.spot_symbol, exit_qty, tp_price)
 
-        self.log(f"[{self.time}] EXECUTED {direction} 0.02 Lot @ ${fill_price:.2f} | Confluence: {confluence_score}/100 | SL: ${sl_price:.2f} | TP: ${tp_price:.2f} | Free Margin: ${self.portfolio.margin_remaining:.2f}")
+        risk_usd = abs(fill_price - sl_price) * self.fixed_lot_size
+        reward_usd = abs(tp_price - fill_price) * self.fixed_lot_size
+        rr_ratio = reward_usd / max(1.0, risk_usd)
+
+        self.log(f"[{self.time}] EXECUTED {direction} 0.02 Lot @ ${fill_price:.2f} via [5M {trigger_reason}] | Confluence: {confluence_score}/100 | SL: ${sl_price:.2f} (-${risk_usd:.2f}) | TP: ${tp_price:.2f} (+${reward_usd:.2f}) | R:R 1:{rr_ratio:.1f} | Free Margin: ${self.portfolio.margin_remaining:.2f}")
 
 
     def on_order_event(self, order_event):
@@ -421,6 +529,10 @@ class XauusdInstitutionalSMCAlgorithm(QCAlgorithm):
 
         print_report(self.trades_2025, "YEAR 2025 (In-Sample Baseline)")
         print_report(self.trades_2026, "YEAR 2026 (Forward Out-of-Sample)")
+
+        self.log(f"--- 5M TIMEFRAME CONFIRMATION SHIELD ---")
+        self.log(f"Confirmed 5M Sniper Entries:        {self.confirmed_5m_entries_count} executions")
+        self.log(f"False 15M Breakouts Filtered Out:   {self.saved_unconfirmed_setups_count} traps avoided")
 
         # محاكاة مونت كارلو 1,000 مسار عشوائي
         all_r = [t["r"] for t in self.all_completed_trades]

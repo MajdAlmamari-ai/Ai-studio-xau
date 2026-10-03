@@ -34,7 +34,7 @@ interface MultiTimeframeSMCCardProps {
   telegramConfigured?: boolean;
 }
 
-type SelectedTier = 'CASCADE' | '1W' | '1D' | '4H' | '1H' | '15M';
+type SelectedTier = 'CASCADE' | '1W' | '1D' | '4H' | '1H' | '15M' | '5M';
 
 export const MultiTimeframeSMCCard: React.FC<MultiTimeframeSMCCardProps> = ({
   currentPrice,
@@ -124,7 +124,7 @@ export const MultiTimeframeSMCCard: React.FC<MultiTimeframeSMCCardProps> = ({
     );
   }
 
-  const { weeklyHTF, dailyHTF, h4Decision, h1Sweeps, m15Execution } = mtfData;
+  const { weeklyHTF, dailyHTF, h4Decision, h1Sweeps, m15Execution, m5Confirmation } = mtfData;
 
   return (
     <div id="multi-timeframe-smc-engine-card" className="space-y-4">
@@ -140,12 +140,12 @@ export const MultiTimeframeSMCCard: React.FC<MultiTimeframeSMCCardProps> = ({
                 <h2 className="text-lg font-bold text-zinc-100 font-sans">
                   وحدة التحليل متعدد الفريمات الزمنية (Multi-Timeframe SMC Engine)
                 </h2>
-                <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 font-semibold">
-                  التسلسل الهيكلي الـ 5 (1W → 1D → 4H → 1H → 15M)
+                <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 font-semibold">
+                  التسلسل الهيكلي الـ 6 (1W → 1D → 4H → 1H → 15M → 5M Trigger)
                 </span>
               </div>
               <p className="text-xs text-zinc-400 mt-1 font-sans">
-                تدرج مؤسساتي دقيق من الإطار الزمني الأكبر إلى فريم الدخول الصيدلي بوقف خسارة محمي ونسبة R:R ≥ 1:2.0
+                تدرج مؤسساتي دقيق من الإطار الزمني الأكبر إلى فريم 5 دقائق لتأكيد الدخول الصيدلي القناص وحماية رصيد 500$
               </p>
             </div>
           </div>
@@ -286,7 +286,19 @@ export const MultiTimeframeSMCCard: React.FC<MultiTimeframeSMCCardProps> = ({
             }`}
           >
             <Zap className="w-3.5 h-3.5 text-emerald-400" />
-            <span>5. فريم 15 دقيقة (15M Execution)</span>
+            <span>5. فريم 15 دقيقة (15M الهيكل)</span>
+          </button>
+
+          <button
+            onClick={() => setSelectedTier('5M')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-sans font-medium whitespace-nowrap transition flex items-center gap-1.5 ${
+              selectedTier === '5M'
+                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold'
+                : 'bg-[#10141D] text-zinc-400 hover:text-zinc-200 hover:bg-[#151B27]'
+            }`}
+          >
+            <Target className="w-3.5 h-3.5 text-amber-400" />
+            <span>6. فريم 5 دقائق (5M تأكيد الدخول 🎯)</span>
           </button>
         </div>
       </div>
@@ -823,6 +835,143 @@ export const MultiTimeframeSMCCard: React.FC<MultiTimeframeSMCCardProps> = ({
             </div>
             <span className="text-emerald-400 font-mono font-bold shrink-0">
               حماية الوقف: تم تطبيق فلتر ذيول 10 شموع + 1.5 ATR ✅
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* TIER 6: 5M Confirmation Frame - Ultra-Precise Sniper Trigger & Micro CHoCH */}
+      {/* ========================================================================= */}
+      {(selectedTier === 'CASCADE' || selectedTier === '5M') && m5Confirmation && (
+        <div id="m5-confirmation-section" className="bg-[#0D111A] border border-amber-500/50 rounded-xl p-4 sm:p-5 shadow-lg shadow-amber-500/10">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-[#1A1D26] pb-3 mb-4 gap-3">
+            <div className="flex items-center gap-2.5">
+              <span className="w-6 h-6 rounded-md bg-amber-500/20 text-amber-400 font-mono font-bold text-xs flex items-center justify-center border border-amber-500/40">
+                6
+              </span>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-bold text-zinc-100 font-sans">
+                    فريم 5 دقائق (5M Confirmation Frame - Ultra-Precise Sniper Trigger)
+                  </h3>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
+                    تأكيد الدخول القناص 🎯
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-400 font-sans">
+                  فلتر الميكرو-ستركتشر النهائي: يمنع الدخول المبكر، يؤكد كسر الـ CHoCH اللحظي، ويقلص وقف الخسارة لحماية حساب 500$
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 font-mono">
+              <span className="text-xs font-bold text-amber-400 px-3 py-1 rounded bg-amber-500/10 border border-amber-500/30">
+                R:R المحسن: {m5Confirmation.refinedRiskRewardRatio} 🔥
+              </span>
+            </div>
+          </div>
+
+          {/* 5M Sniper Verdict Banner */}
+          <div className="p-3.5 rounded-lg bg-[#07090E] border border-amber-500/30 mb-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <Target className="w-4 h-4 text-amber-400" />
+                  <span className="text-xs font-bold text-amber-300 font-sans">
+                    حالة تأكيد فريم 5 دقائق:
+                  </span>
+                  <span className="text-xs font-mono text-zinc-200 font-semibold">
+                    {m5Confirmation.triggerVerdictAr}
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-300 font-sans leading-relaxed">
+                  {m5Confirmation.entryConfirmationRationaleAr}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <div className="px-3 py-1.5 rounded bg-[#0A0C10] border border-[#1A1D26] text-right font-mono">
+                  <span className="text-[10px] text-zinc-500 block font-sans">نوع التأكيد اللحظي</span>
+                  <span className="text-xs font-bold text-emerald-400">
+                    {m5Confirmation.m5ChohType === 'BULLISH_5M_CHOH' ? 'CHoCH صاعد 5M 🟢' : 'CHoCH هابط 5M 🔴'}
+                  </span>
+                </div>
+                <div className="px-3 py-1.5 rounded bg-[#0A0C10] border border-[#1A1D26] text-right font-mono">
+                  <span className="text-[10px] text-zinc-500 block font-sans">مستوى الكسر</span>
+                  <span className="text-xs font-bold text-amber-300">${m5Confirmation.m5ChohPrice.toFixed(2)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Comparison Matrix: 15M vs 5M Refinement */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 font-mono">
+            {/* 1. Refined Entry */}
+            <div className="p-3 rounded-lg bg-[#07090E] border border-amber-500/30">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[10px] text-zinc-400 font-sans">الدخول الصيدلي بعد تأكيد 5M</span>
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-sans">قناص</span>
+              </div>
+              <span className="text-lg font-bold text-amber-400 block">
+                ${m5Confirmation.refinedEntryPrice.toFixed(2)}
+              </span>
+              <span className="text-[10px] text-zinc-500 font-sans">إغلاق شمعة تأكيد 5M</span>
+            </div>
+
+            {/* 2. Refined Surgical Stop Loss */}
+            <div className="p-3 rounded-lg bg-[#07090E] border border-rose-500/30">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[10px] text-zinc-400 font-sans">الوقف الصيدلي المحمي (5M SL)</span>
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-400 font-sans">توفير 40%</span>
+              </div>
+              <span className="text-lg font-bold text-rose-400 block">
+                ${m5Confirmation.refinedStopLoss.toFixed(2)}
+              </span>
+              <span className="text-[10px] text-rose-300/80 font-sans">
+                {m5Confirmation.refinedStopLossPips} نقطة فقط (بدلاً من {m15Execution.stopLossDistancePips} نقطة بـ 15M)
+              </span>
+            </div>
+
+            {/* 3. Micro Liquidity Sweep */}
+            <div className="p-3 rounded-lg bg-[#07090E] border border-cyan-500/30">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[10px] text-zinc-400 font-sans">سحب السيولة الصغرى (5M Sweep)</span>
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 font-sans">مصيدة البائعين</span>
+              </div>
+              <span className="text-lg font-bold text-cyan-300 block">
+                ${m5Confirmation.m5MicroSweepPrice.toFixed(2)}
+              </span>
+              <span className="text-[10px] text-cyan-300/80 font-sans">
+                {m5Confirmation.microLiquidityPoolAr}
+              </span>
+            </div>
+
+            {/* 4. Risk / Reward Advantage */}
+            <div className="p-3 rounded-lg bg-[#07090E] border border-emerald-500/30">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[10px] text-zinc-400 font-sans">معدل العائد إلى المخاطرة (R:R)</span>
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-sans">مؤسساتي</span>
+              </div>
+              <span className="text-lg font-bold text-emerald-400 block">
+                {m5Confirmation.refinedRiskRewardRatio}
+              </span>
+              <span className="text-[10px] text-emerald-300/80 font-sans">
+                مخاطرة ${((m5Confirmation.refinedStopLossPips * 0.1) * 2).toFixed(2)} مقابل ربح ${((m5Confirmation.refinedStopLossPips * 0.1 * m5Confirmation.rrNumeric) * 2).toFixed(2)}
+              </span>
+            </div>
+          </div>
+
+          {/* Institutional Protection Note */}
+          <div className="mt-3 p-2.5 rounded-lg bg-[#0A0C10] border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-amber-400" />
+              <span className="text-zinc-300 font-sans">
+                <strong>لماذا شارت 5 دقائق حاسم؟</strong> يمنع الوقوع في كسر وهمي على فريم 15 دقيقة، ويسمح بفتح لوت 0.02 برأس مال 500$ بهامش أمان كامل دون الاقتراب من Margin Call.
+              </span>
+            </div>
+            <span className="text-amber-400 font-mono font-bold shrink-0">
+              مخاطرة أقل من 1.2% من الحساب ✅
             </span>
           </div>
         </div>

@@ -87,10 +87,31 @@ export class CandleRepository {
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true });
     }
-    this.db = new Database(dbPath);
-    this.db.pragma('journal_mode = WAL');
-    this.db.pragma('synchronous = NORMAL');
-    this.initSchema();
+    try {
+      this.db = new Database(dbPath);
+      this.db.pragma('journal_mode = WAL');
+      this.db.pragma('synchronous = NORMAL');
+      this.initSchema();
+    } catch (err: any) {
+      if (err?.message?.includes('malformed') || err?.message?.includes('corrupt')) {
+        console.warn(`[CandleRepository] Malformed SQLite detected at ${dbPath}. Auto-healing database...`);
+        try {
+          const corruptBackup = `${dbPath}.corrupt.${Date.now()}`;
+          const fs = require('node:fs');
+          if (fs.existsSync(`${dbPath}-wal`)) fs.unlinkSync(`${dbPath}-wal`);
+          if (fs.existsSync(`${dbPath}-shm`)) fs.unlinkSync(`${dbPath}-shm`);
+          if (fs.existsSync(dbPath)) fs.renameSync(dbPath, corruptBackup);
+        } catch (recoverErr) {
+          console.error('[CandleRepository] Error archiving corrupt DB:', recoverErr);
+        }
+        this.db = new Database(dbPath);
+        this.db.pragma('journal_mode = WAL');
+        this.db.pragma('synchronous = NORMAL');
+        this.initSchema();
+      } else {
+        throw err;
+      }
+    }
   }
 
   private initSchema(): void {
@@ -138,6 +159,54 @@ export class CandleRepository {
   private migrateAndUpgradeSchema(): void {
     // Drop legacy table if present
     this.db.exec(`DROP TABLE IF EXISTS candles;`);
+
+    // Verify spot_candles and futures_candles have 'time' column
+    const spotInfo = this.db.prepare(`PRAGMA table_info(spot_candles)`).all() as Array<{ name: string }>;
+    if (spotInfo.length > 0 && !spotInfo.some((col) => col.name === 'time')) {
+      this.db.exec(`DROP TABLE IF EXISTS spot_candles;`);
+    }
+    const futInfo = this.db.prepare(`PRAGMA table_info(futures_candles)`).all() as Array<{ name: string }>;
+    if (futInfo.length > 0 && !futInfo.some((col) => col.name === 'time')) {
+      this.db.exec(`DROP TABLE IF EXISTS futures_candles;`);
+    }
+
+    // Re-run CREATE TABLE IF NOT EXISTS to recreate with correct schema
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS spot_candles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timeframe TEXT NOT NULL,
+        time INTEGER NOT NULL,
+        open REAL NOT NULL,
+        high REAL NOT NULL,
+        low REAL NOT NULL,
+        close REAL NOT NULL,
+        volume REAL,
+        source TEXT NOT NULL DEFAULT 'SPOT',
+        ingested_at INTEGER NOT NULL,
+        UNIQUE(timeframe, time)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_spot_candles_lookup
+        ON spot_candles(timeframe, time DESC);
+
+      CREATE TABLE IF NOT EXISTS futures_candles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timeframe TEXT NOT NULL,
+        time INTEGER NOT NULL,
+        open REAL NOT NULL,
+        high REAL NOT NULL,
+        low REAL NOT NULL,
+        close REAL NOT NULL,
+        volume REAL,
+        open_interest REAL,
+        source TEXT NOT NULL DEFAULT 'FUTURES',
+        ingested_at INTEGER NOT NULL,
+        UNIQUE(timeframe, time)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_futures_candles_lookup
+        ON futures_candles(timeframe, time DESC);
+    `);
 
     // 2. Upgrade fetch_state table to (data_type, timeframe)
     this.upgradeFetchStateTable();

@@ -1,6 +1,16 @@
 import { getCachedSpotPrice, getActivePricingMode } from './pricingService';
 import { logger } from './loggerService';
 import { fetchYahooHistoricalCandles, YahooCandle } from './yahooFinanceService';
+import { candleRepository } from './candleRepository';
+
+export class DataUnavailableError extends Error {
+  public code: string;
+  constructor(codeOrMessage: string, message?: string) {
+    super(message || codeOrMessage);
+    this.name = 'DataUnavailableError';
+    this.code = message ? codeOrMessage : 'DATA_UNAVAILABLE';
+  }
+}
 
 export type ChartTimeframe = '4H' | '1D' | '1W' | '1M';
 
@@ -313,93 +323,6 @@ function parseCandles(
 }
 
 /**
- * Generate fallback candles calibrated strictly to live price if Yahoo is slow
- */
-function generateFallbackCandles(timeframe: ChartTimeframe, currentPrice: number): CandleData[] {
-  const p = currentPrice > 0 ? currentPrice : 4337.53;
-  const count = timeframe === '4H' ? 36 : timeframe === '1D' ? 30 : timeframe === '1W' ? 24 : 20;
-  
-  let stepSec = 4 * 3600;
-  let volatility = 6.5;
-  if (timeframe === '1D') {
-    stepSec = 24 * 3600;
-    volatility = 18.0;
-  } else if (timeframe === '1W') {
-    stepSec = 7 * 24 * 3600;
-    volatility = 42.0;
-  } else if (timeframe === '1M') {
-    stepSec = 30 * 24 * 3600;
-    volatility = 95.0;
-  }
-
-  const nowSec = Math.floor(Date.now() / 1000);
-  const startSec = nowSec - (count * stepSec);
-
-  const candles: CandleData[] = [];
-  let runningPrice = p - (volatility * 1.8);
-
-  for (let i = 0; i < count; i++) {
-    const t = startSec + (i * stepSec);
-    const progress = i / count;
-    
-    // Deterministic progression reaching live price at the end
-    const trend = (p - runningPrice) * (progress * 0.5);
-    const candleOpen = i === 0 ? runningPrice : candles[i - 1].close;
-    
-    let candleClose = candleOpen + trend;
-    if (i === count - 1) {
-      candleClose = p; // End exactly at current price
-    }
-
-    const isBull = candleClose >= candleOpen;
-    const bodyHigh = Math.max(candleOpen, candleClose);
-    const bodyLow = Math.min(candleOpen, candleClose);
-    const wickDelta = volatility * 0.15;
-
-    const candleHigh = Number((bodyHigh + wickDelta).toFixed(2));
-    const candleLow = Number((bodyLow - wickDelta).toFixed(2));
-    const cOpen = Number(candleOpen.toFixed(2));
-    const cClose = Number(candleClose.toFixed(2));
-    const change = Number((cClose - cOpen).toFixed(2));
-    const changePercent = Number(((change / cOpen) * 100).toFixed(2));
-    const range = Math.max(0.1, candleHigh - candleLow);
-    const body = Math.abs(cClose - cOpen);
-    const bodyRatio = Number((body / range).toFixed(2));
-    const upperWick = Number((isBull ? candleHigh - cClose : candleHigh - cOpen).toFixed(2));
-    const lowerWick = Number((isBull ? cOpen - candleLow : cClose - candleLow).toFixed(2));
-
-    const patternAr = detectCandlePattern(cOpen, candleHigh, candleLow, cClose, i > 0 ? {
-      open: candles[i - 1].open,
-      close: candles[i - 1].close,
-      isBullish: candles[i - 1].isBullish,
-    } : undefined);
-
-    const baseVol = timeframe === '4H' ? 8400 : timeframe === '1D' ? 68000 : timeframe === '1W' ? 340000 : 1250000;
-    const volume = baseVol;
-
-    candles.push({
-      time: t,
-      dateStr: formatDate(t, timeframe),
-      open: cOpen,
-      high: candleHigh,
-      low: candleLow,
-      close: cClose,
-      volume,
-      change,
-      changePercent,
-      isBullish: isBull,
-      timeframe,
-      bodyRatio,
-      upperWick,
-      lowerWick,
-      patternAr,
-    });
-  }
-
-  return candles;
-}
-
-/**
  * Builds institutional summary for a timeframe
  */
 function buildSummary(timeframe: ChartTimeframe, candles: CandleData[]): MultiTimeframeSummary {
@@ -512,9 +435,34 @@ export async function getCandlesForTimeframe(
     logger.warn('YAHOO', `Yahoo Finance historical candles fetch warning: ${err?.message || err}`);
   }
 
-  // If fetch failed or yielded few candles, use dynamic realistic fallback anchored to spot price
-  if (candles.length < 10) {
-    candles = generateFallbackCandles(requestedTimeframe, spotPrice);
+  // If Yahoo fetch yielded no candles, attempt to retrieve authentic candles from CandleRepository
+  if (candles.length === 0) {
+    try {
+      const stored = candleRepository.getFuturesCandles('15m', 40);
+      if (stored && stored.length > 0) {
+        candles = stored.map((c) => ({
+          time: c.time,
+          dateStr: formatDate(c.time, requestedTimeframe),
+          open: c.open,
+          high: c.high,
+          low: c.low,
+          close: c.close,
+          volume: c.volume,
+          change: Number((c.close - c.open).toFixed(2)),
+          changePercent: Number((((c.close - c.open) / (c.open || 1)) * 100).toFixed(2)),
+          isBullish: c.close >= c.open,
+          timeframe: requestedTimeframe,
+          bodyRatio: 0.5,
+          upperWick: 0.5,
+          lowerWick: 0.5,
+          patternAr: 'شمعة حقيقية من مزود البيانات (TradingView Relay)',
+        }));
+      }
+    } catch {}
+  }
+
+  if (candles.length === 0) {
+    throw new DataUnavailableError('CANDLES_UNAVAILABLE', 'لم يتم العثور على شموع تداول حقيقية من مزود البيانات المباشر');
   }
 
   const latestCandle = candles[candles.length - 1];
@@ -527,7 +475,7 @@ export async function getCandlesForTimeframe(
     if (cachedAux && now < cachedAux.expiresAt) {
       return cachedAux.summary;
     }
-    const gen = buildSummary(tf, generateFallbackCandles(tf, spotPrice));
+    const gen = buildSummary(tf, candles);
     cachedSummaries[tf] = { summary: gen, expiresAt: now + 30000 };
     return gen;
   };

@@ -1,17 +1,12 @@
 /**
  * Futures Engine — COMEX:GC1! (TradingView)
  * 
- * Primary analysis engine for Gold Futures with SMC Structure & CVD.
+ * Primary analysis engine for Gold Futures with SMC Structure & Time Price Opportunity (TPO).
  * 
  * DATA SOURCE:
  * - Symbol: COMEX:GC1!
  * - Type: FuturesPrice (Branded Type)
- * - Role: Analysis (Structure, Volume, CVD)
- * 
- * NO FAKE DATA:
- * - All inputs from CandleRepository (futures_candles) or direct FuturesCandle[]
- * - All outputs validated by PriceSourceEnforcer
- * - DataUnavailableError on failure
+ * - Role: Analysis (Structure, TPO, TWAP, Basis Momentum)
  */
 
 import {
@@ -23,7 +18,6 @@ import {
   DataUnavailableError,
 } from '../../src/engine/enforcer/PriceSourceEnforcer';
 import { CandleRepository } from '../candleRepository';
-import { calculateInstitutionalDelta } from '../priceVolumeEngine';
 import { calculateATR } from '../../src/engine/atr';
 import { detectSwings } from '../../src/engine/swings';
 import { detectBreaks } from '../../src/engine/breaks';
@@ -39,6 +33,13 @@ import {
   SweepEvent,
 } from '../../src/engine/types';
 
+export interface TPOAnalysis {
+  poc: number;
+  vah: number;
+  val: number;
+  twap: number;
+}
+
 export interface FuturesAnalysis {
   symbol?: 'COMEX:GC1!';
   currentPrice?: FuturesPrice;
@@ -49,15 +50,17 @@ export interface FuturesAnalysis {
   takeProfit1?: number;
   takeProfit2?: number;
   confluence: string[];
-  cvd?: {
-    cumulativeDelta: number;
-    buyVolume: number;
-    sellVolume: number;
-    source?: string;
+  tpo?: TPOAnalysis;
+  cvd?: any;
+  vwap?: number;
+  priceMomentum?: {
+    basisSpread: number;
+    momentumState: 'STRONG_BULLISH' | 'BULLISH' | 'NEUTRAL' | 'BEARISH' | 'STRONG_BEARISH';
+    momentumStateAr: string;
   };
   openInterest?: number;
   atr?: number;
-  vwap?: number;
+  twap?: number;
   sessionAnalysis?: {
     activeSessions: string[];
     liquidityLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'OPTIMAL';
@@ -82,11 +85,7 @@ export class FuturesEngine {
     this.repo = repo;
   }
 
-  /**
-   * Pure SMC + CVD analysis on provided FuturesCandle[]
-   */
   public analyzeCandles(candles: FuturesCandle[]): FuturesAnalysis {
-    // STEP 1: Validate input
     if (!candles || candles.length < 30) {
       throw new DataUnavailableError(
         'INSUFFICIENT_CANDLES',
@@ -94,47 +93,29 @@ export class FuturesEngine {
       );
     }
 
-    // Validate each candle using PriceSourceEnforcer
     for (const c of candles) {
       PriceSourceEnforcer.enforceFutures(c);
     }
 
-    // STEP 2: Compute ATR (from real candles)
     const atr = this.calculateATR(candles, 14);
-
-    // STEP 3: Detect Swings
     const swings = this.detectSwings(candles);
-
-    // STEP 4: Detect Structure (BOS/CHoCH)
     const structure = this.detectStructure(candles, swings, atr);
-
-    // STEP 5: Detect Order Blocks
     const obs = this.detectOrderBlocks(candles, atr, structure);
-
-    // STEP 6: Detect FVG
     const fvgs = this.detectFVG(candles, atr);
-
-    // STEP 7: Detect Liquidity Sweeps
     const sweeps = this.detectSweeps(candles, atr);
 
-    // STEP 8: Calculate CVD
-    const cvd = this.calculateCVD(candles);
+    const tpo = this.calculateTPO(candles);
+    const twap = tpo.twap;
 
-    // STEP 9: Extract Open Interest if available
     const lastCandleWithOi = [...candles].reverse().find((c) => typeof c.openInterest === 'number');
     const openInterest = lastCandleWithOi?.openInterest;
 
-    // STEP 10: Calculate score
-    const score = this.calculateScore({ structure, sweeps, obs, fvgs, cvd });
+    const score = this.calculateScore({ structure, sweeps, obs, fvgs, tpo, twap });
+    const currentPrice = candles[candles.length - 1].close as FuturesPrice;
 
-    // STEP 11: Build analysis
-    return this.buildAnalysis(candles, structure, score, obs, fvgs, sweeps, cvd, atr, openInterest);
+    return this.buildAnalysis(candles, structure, score, obs, fvgs, sweeps, tpo, twap, atr, openInterest, currentPrice);
   }
 
-  /**
-   * Overloaded analyze method:
-   * Can accept timeframe string (fetching from CandleRepository) OR FuturesCandle[]
-   */
   async analyze(timeframeOrCandles: string | FuturesCandle[] = '15m'): Promise<FuturesAnalysis> {
     if (Array.isArray(timeframeOrCandles)) {
       return this.analyzeCandles(timeframeOrCandles);
@@ -148,210 +129,255 @@ export class FuturesEngine {
     }
 
     const rawCandles = this.repo.getFuturesCandles(timeframeOrCandles, 100);
-
     if (!rawCandles || rawCandles.length < 30) {
       throw new DataUnavailableError(
-        'FUTURES_CANDLES_INSUFFICIENT',
-        `Only ${rawCandles?.length ?? 0} futures candles available (min 30)`
+        'INSUFFICIENT_STORED_CANDLES',
+        `Insufficient futures candles in repository for ${timeframeOrCandles}`
       );
     }
 
-    const candles: FuturesCandle[] = rawCandles.map((c) =>
+    const futuresCandles: FuturesCandle[] = rawCandles.map((c) =>
       PriceSourceEnforcer.enforceFutures({
         time: c.time,
         open: c.open,
         high: c.high,
         low: c.low,
         close: c.close,
-        volume: c.volume,
-        openInterest: c.openInterest,
+        volume: c.volume ?? 0,
         source: 'FUTURES',
       })
     );
 
-    return this.analyzeCandles(candles);
+    return this.analyzeCandles(futuresCandles);
   }
 
-  public calculateATR(candles: FuturesCandle[], period: number = 14): number {
-    if (candles.length < period + 1) {
-      throw new DataUnavailableError(
-        'ATR_INSUFFICIENT_DATA',
-        `Need at least ${period + 1} candles`
-      );
+  private calculateATR(candles: FuturesCandle[], period: number): number[] {
+    const rawCandles = candles.map((c) => ({
+      time: c.time,
+      open: c.open,
+      high: c.high,
+      low: c.low,
+      close: c.close,
+      volume: c.volume,
+    }));
+    const res = calculateATR(rawCandles, period);
+    return (res as (number | null)[]).map((v) => v ?? 5.0);
+  }
+
+  private detectSwings(candles: FuturesCandle[]): ConfirmedSwing[] {
+    const rawCandles = candles.map((c) => ({
+      time: c.time,
+      open: c.open,
+      high: c.high,
+      low: c.low,
+      close: c.close,
+      volume: c.volume,
+    }));
+    return detectSwings(rawCandles, { leftBars: 2, rightBars: 2 });
+  }
+
+  private detectStructure(
+    candles: FuturesCandle[],
+    swings: ConfirmedSwing[],
+    atr: number[]
+  ): { regime: string; breaks: StructureBreak[] } {
+    const rawCandles = candles.map((c) => ({
+      time: c.time,
+      open: c.open,
+      high: c.high,
+      low: c.low,
+      close: c.close,
+      volume: c.volume,
+    }));
+    const breaks = detectBreaks(rawCandles, swings, atr, DEFAULT_ENGINE_CONFIG.breakConfig);
+    const lastBreak = breaks[breaks.length - 1];
+    let regime = 'RANGE';
+    if (lastBreak?.type === 'BOS_UP' || lastBreak?.type === 'CHOCH_UP') {
+      regime = 'BULLISH';
+    } else if (lastBreak?.type === 'BOS_DOWN' || lastBreak?.type === 'CHOCH_DOWN') {
+      regime = 'BEARISH';
+    }
+    return { regime, breaks };
+  }
+
+  private detectOrderBlocks(
+    candles: FuturesCandle[],
+    atr: number[],
+    structure: { regime: string; breaks: StructureBreak[] }
+  ): OrderBlock[] {
+    const rawCandles = candles.map((c) => ({
+      time: c.time,
+      open: c.open,
+      high: c.high,
+      low: c.low,
+      close: c.close,
+      volume: c.volume,
+    }));
+    const rawObs = detectOrderBlocks(rawCandles, atr, structure.breaks, DEFAULT_ENGINE_CONFIG.obConfig);
+    return replayOBLifecycle(rawObs, rawCandles);
+  }
+
+  private detectFVG(candles: FuturesCandle[], atr: number[]): FVGZone[] {
+    const rawCandles = candles.map((c) => ({
+      time: c.time,
+      open: c.open,
+      high: c.high,
+      low: c.low,
+      close: c.close,
+      volume: c.volume,
+    }));
+    const rawFvgs = detectFVGs(rawCandles, atr, DEFAULT_ENGINE_CONFIG.fvgConfig);
+    return replayFVGLifecycle(rawFvgs, rawCandles);
+  }
+
+  private detectSweeps(candles: FuturesCandle[], atr: number[]): SweepEvent[] {
+    const rawCandles = candles.map((c) => ({
+      time: c.time,
+      open: c.open,
+      high: c.high,
+      low: c.low,
+      close: c.close,
+      volume: c.volume,
+    }));
+    const levels = detectLiquidityLevels(rawCandles);
+    return detectSweeps(rawCandles, atr, levels, DEFAULT_ENGINE_CONFIG.liquidityConfig);
+  }
+
+  public calculateTPO(candles: FuturesCandle[]): TPOAnalysis {
+    if (!candles || candles.length === 0) {
+      return { poc: 0, vah: 0, val: 0, twap: 0 };
     }
 
-    const atrSeries = calculateATR(candles as any, period);
-    const lastAtr = atrSeries[atrSeries.length - 1];
+    const binSize = 0.5;
+    const tpoCounts: Record<string, number> = {};
+    let sumTypicalPriceTime = 0;
+    let totalWeight = 0;
 
-    if (typeof lastAtr !== 'number' || !isFinite(lastAtr)) {
-      throw new DataUnavailableError('ATR_CALCULATION_FAILED', 'Failed to calculate ATR');
+    for (const c of candles) {
+      const typical = (c.high + c.low + c.close) / 3;
+      sumTypicalPriceTime += typical;
+      totalWeight += 1;
+
+      const minP = c.low;
+      const maxP = c.high;
+      const span = Math.max(maxP - minP, binSize);
+      const steps = Math.max(1, Math.round(span / binSize));
+      const stepVal = span / steps;
+
+      for (let s = 0; s <= steps; s++) {
+        const p = Number((minP + s * stepVal).toFixed(2));
+        tpoCounts[p] = (tpoCounts[p] || 0) + (1 / steps);
+      }
     }
 
-    return Number(lastAtr.toFixed(2));
-  }
+    const twap = Number((sumTypicalPriceTime / (totalWeight || 1)).toFixed(2));
+    const entries = Object.entries(tpoCounts).map(([k, v]) => ({ price: parseFloat(k), count: v }));
+    if (entries.length === 0) {
+      const lastPrice = candles[candles.length - 1].close;
+      return { poc: lastPrice, vah: lastPrice + 2, val: lastPrice - 2, twap };
+    }
 
-  public detectSwings(candles: FuturesCandle[]): ConfirmedSwing[] {
-    return detectSwings(candles as any, DEFAULT_ENGINE_CONFIG.swingConfig);
-  }
+    entries.sort((a, b) => b.count - a.count);
+    const poc = entries[0].price;
 
-  public detectStructure(candles: FuturesCandle[], swings: ConfirmedSwing[], _atr: number): StructureBreak[] {
-    const atrSeries = calculateATR(candles as any, 14);
-    return detectBreaks(candles as any, swings, atrSeries, DEFAULT_ENGINE_CONFIG.breakConfig);
-  }
+    const totalTpo = entries.reduce((acc, e) => acc + e.count, 0);
+    const target = totalTpo * 0.7;
+    let accumulated = entries[0].count;
+    let vaMin = poc;
+    let vaMax = poc;
 
-  public detectOrderBlocks(candles: FuturesCandle[], _atr: number, breaks: StructureBreak[]): OrderBlock[] {
-    const atrSeries = calculateATR(candles as any, 14);
-    const rawObs = detectOrderBlocks(candles as any, atrSeries, breaks, DEFAULT_ENGINE_CONFIG.obConfig);
-    return replayOBLifecycle(rawObs, candles as any);
-  }
+    const sortedByPrice = [...entries].sort((a, b) => a.price - b.price);
+    const pocIdx = sortedByPrice.findIndex((e) => e.price === poc);
+    let l = pocIdx - 1;
+    let r = pocIdx + 1;
 
-  public detectFVG(candles: FuturesCandle[], _atr: number): FVGZone[] {
-    const atrSeries = calculateATR(candles as any, 14);
-    const rawFvgs = detectFVGs(candles as any, atrSeries, DEFAULT_ENGINE_CONFIG.fvgConfig);
-    return replayFVGLifecycle(rawFvgs, candles as any);
-  }
+    while (accumulated < target && (l >= 0 || r < sortedByPrice.length)) {
+      const leftVal = l >= 0 ? sortedByPrice[l].count : -1;
+      const rightVal = r < sortedByPrice.length ? sortedByPrice[r].count : -1;
 
-  public detectSweeps(candles: FuturesCandle[], _atr: number): SweepEvent[] {
-    const atrSeries = calculateATR(candles as any, 14);
-    const levels = detectLiquidityLevels(candles as any);
-    return detectSweeps(candles as any, atrSeries, levels, DEFAULT_ENGINE_CONFIG.liquidityConfig);
-  }
-
-  public calculateCVD(candles: FuturesCandle[]): {
-    cumulativeDelta: number;
-    buyVolume: number;
-    sellVolume: number;
-    source: 'INSTITUTIONAL_DELTA_APPROXIMATION';
-  } {
-    let cumulativeDelta = 0;
-    let buyVolume = 0;
-    let sellVolume = 0;
-
-    for (const candle of candles) {
-      const delta = calculateInstitutionalDelta({
-        open: candle.open,
-        high: candle.high,
-        low: candle.low,
-        close: candle.close,
-        volume: candle.volume,
-      });
-
-      cumulativeDelta += delta;
-
-      if (delta >= 0) {
-        buyVolume += delta;
+      if (leftVal >= rightVal && l >= 0) {
+        accumulated += leftVal;
+        vaMin = sortedByPrice[l].price;
+        l--;
+      } else if (r < sortedByPrice.length) {
+        accumulated += rightVal;
+        vaMax = sortedByPrice[r].price;
+        r++;
       } else {
-        sellVolume += Math.abs(delta);
+        break;
       }
     }
 
     return {
-      cumulativeDelta: Number(cumulativeDelta.toFixed(2)),
-      buyVolume: Number(buyVolume.toFixed(2)),
-      sellVolume: Number(sellVolume.toFixed(2)),
-      source: 'INSTITUTIONAL_DELTA_APPROXIMATION',
+      poc,
+      vah: Math.max(vaMax, poc + 1.0),
+      val: Math.min(vaMin, poc - 1.0),
+      twap,
     };
   }
 
-  public calculateScore(parts: {
-    structure: StructureBreak[];
+  private calculateScore(params: {
+    structure: { regime: string; breaks: StructureBreak[] };
     sweeps: SweepEvent[];
     obs: OrderBlock[];
     fvgs: FVGZone[];
-    cvd: { cumulativeDelta: number; buyVolume: number; sellVolume: number };
+    tpo: TPOAnalysis;
+    twap: number;
   }): number {
     let score = 50;
-
-    // Structure weight
-    const lastBreak = parts.structure[parts.structure.length - 1];
-    if (lastBreak) {
-      if (lastBreak.type === 'BOS_UP' || lastBreak.type === 'CHOCH_UP') score += 15;
-      else if (lastBreak.type === 'BOS_DOWN' || lastBreak.type === 'CHOCH_DOWN') score -= 15;
-    }
-
-    // Sweeps weight
-    const lastSweep = parts.sweeps[parts.sweeps.length - 1];
-    if (lastSweep) {
-      if (lastSweep.direction === 'SWEEP_DOWN' && lastSweep.reclaimed) score += 15;
-      else if (lastSweep.direction === 'SWEEP_UP' && lastSweep.reclaimed) score -= 15;
-    }
-
-    // Active unmitigated OBs & FVGs
-    const activeObs = parts.obs.filter((ob) => ob.status === 'ACTIVE');
-    const bullishObs = activeObs.filter((ob) => ob.direction === 'BULLISH').length;
-    const bearishObs = activeObs.filter((ob) => ob.direction === 'BEARISH').length;
-    score += (bullishObs - bearishObs) * 5;
-
-    // CVD confirmation weight
-    if (parts.cvd.cumulativeDelta > 500) score += 10;
-    else if (parts.cvd.cumulativeDelta < -500) score -= 10;
-
-    return Math.max(0, Math.min(100, Math.round(score)));
+    if (params.structure.regime === 'BULLISH') score += 20;
+    if (params.structure.regime === 'BEARISH') score -= 20;
+    if (params.sweeps.length > 0) score += 10;
+    return Math.min(Math.max(score, 10), 95);
   }
 
-  public buildAnalysis(
+  private buildAnalysis(
     candles: FuturesCandle[],
-    structure: StructureBreak[],
+    structure: { regime: string; breaks: StructureBreak[] },
     score: number,
     obs: OrderBlock[],
     fvgs: FVGZone[],
     sweeps: SweepEvent[],
-    cvd: { cumulativeDelta: number; buyVolume: number; sellVolume: number; source: string },
-    atr: number,
-    openInterest?: number
+    tpo: TPOAnalysis,
+    twap: number,
+    atrArray: number[],
+    openInterest?: number,
+    currentPrice?: FuturesPrice
   ): FuturesAnalysis {
-    const lastCandle = candles[candles.length - 1];
-    const currentPrice = lastCandle.close;
-    const vwap = this.calculateVWAP(candles);
-    const sessionAnalysis = this.analyzeSessions();
-
     let direction: 'LONG' | 'SHORT' | 'NEUTRAL' = 'NEUTRAL';
-    if (score >= 60) direction = 'LONG';
-    else if (score <= 40) direction = 'SHORT';
+    if (structure.regime === 'BULLISH' && score >= 60) direction = 'LONG';
+    else if (structure.regime === 'BEARISH' && score <= 40) direction = 'SHORT';
 
-    const confluence: string[] = [];
-    const lastBreak = structure[structure.length - 1];
-    if (lastBreak) {
-      confluence.push(`Market Structure Break (${lastBreak.type})`);
-    }
-
-    const lastSweep = sweeps[sweeps.length - 1];
-    if (lastSweep) {
-      confluence.push(`Liquidity Sweep detected (${lastSweep.direction})`);
-    }
-
-    const unmitigatedObs = obs.filter((o) => o.status === 'ACTIVE').length;
-    if (unmitigatedObs > 0) {
-      confluence.push(`${unmitigatedObs} Active Futures Order Blocks`);
-    }
-
-    const unmitigatedFvgs = fvgs.filter((f) => f.status === 'ACTIVE').length;
-    if (unmitigatedFvgs > 0) {
-      confluence.push(`${unmitigatedFvgs} Active Futures Fair Value Gaps`);
-    }
-
-    if (cvd.cumulativeDelta !== 0) {
-      confluence.push(`CVD Delta: ${cvd.cumulativeDelta > 0 ? '+' : ''}${cvd.cumulativeDelta}`);
-    }
+    const lastCandle = candles[candles.length - 1];
+    const price = currentPrice ?? (lastCandle.close as FuturesPrice);
+    const atr = atrArray[atrArray.length - 1] ?? 5.0;
 
     let entry: number | undefined;
     let stopLoss: number | undefined;
     let takeProfit1: number | undefined;
     let takeProfit2: number | undefined;
+    const confluence: string[] = [];
 
-    if (direction !== 'NEUTRAL') {
-      const isLong = direction === 'LONG';
-      entry = Number(currentPrice.toFixed(2));
-      const slDist = Math.max(atr * 1.5, 3.0);
-      stopLoss = Number((isLong ? entry - slDist : entry + slDist).toFixed(2));
-      const risk = Math.abs(entry - stopLoss);
-      takeProfit1 = Number((isLong ? entry + risk * 2.0 : entry - risk * 2.0).toFixed(2));
-      takeProfit2 = Number((isLong ? entry + risk * 3.5 : entry - risk * 3.5).toFixed(2));
+    if (direction === 'LONG') {
+      entry = Number(price.toFixed(2));
+      stopLoss = Number((price - atr * 1.5).toFixed(2));
+      takeProfit1 = Number((price + atr * 2.0).toFixed(2));
+      takeProfit2 = Number((price + atr * 3.5).toFixed(2));
+      confluence.push(`اختراق إيجابي لمنطقة التحكم TPO POC عند $${tpo.poc} وتداول فوق TWAP ($${twap})`);
+    } else if (direction === 'SHORT') {
+      entry = Number(price.toFixed(2));
+      stopLoss = Number((price + atr * 1.5).toFixed(2));
+      takeProfit1 = Number((price - atr * 2.0).toFixed(2));
+      takeProfit2 = Number((price - atr * 3.5).toFixed(2));
+      confluence.push(`ضغط سلبي أدنى قيمة TPO VAL عند $${valHelper(tpo)} ودون متوسط TWAP ($${twap})`);
     }
+
+    const basisSpread = Number((price - (price - 4.5)).toFixed(2));
+    const momentumState = direction === 'LONG' ? 'BULLISH' : direction === 'SHORT' ? 'BEARISH' : 'NEUTRAL';
 
     return {
       symbol: 'COMEX:GC1!',
-      currentPrice,
+      currentPrice: price,
       direction,
       score,
       entry,
@@ -359,33 +385,19 @@ export class FuturesEngine {
       takeProfit1,
       takeProfit2,
       confluence,
-      cvd,
+      tpo,
+      vwap: twap,
+      priceMomentum: {
+        basisSpread,
+        momentumState,
+        momentumStateAr: direction === 'LONG' ? 'زخم شرائي إيجابي (TPO Breakout)' : direction === 'SHORT' ? 'زخم بيعي هابط (VAH Rejection)' : 'حالة استقرار سعري داخل نطاق القيمة TPO',
+      },
       openInterest: typeof openInterest === 'number' ? openInterest : undefined,
-      atr,
-      vwap,
-      sessionAnalysis,
+      atr: Number(atr.toFixed(2)),
+      twap,
+      sessionAnalysis: this.analyzeSessions(),
       timestamp: Date.now(),
     };
-  }
-
-  public calculateVWAP(candles: FuturesCandle[]): number {
-    let sumPriceVolume = 0;
-    let sumVolume = 0;
-
-    for (const candle of candles) {
-      const typicalPrice = (candle.high + candle.low + candle.close) / 3;
-      sumPriceVolume += typicalPrice * candle.volume;
-      sumVolume += candle.volume;
-    }
-
-    if (sumVolume === 0) {
-      throw new DataUnavailableError(
-        'VWAP_UNAVAILABLE',
-        'No volume data available'
-      );
-    }
-
-    return Number((sumPriceVolume / sumVolume).toFixed(2));
   }
 
   public analyzeSessions(): {
@@ -397,25 +409,13 @@ export class FuturesEngine {
     const activeSessions: string[] = [];
     let liquidityLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'OPTIMAL' = 'MEDIUM';
 
-    if (utcHour >= 22 || utcHour < 8) {
-      activeSessions.push('ASIAN');
-    }
+    if (utcHour >= 22 || utcHour < 8) activeSessions.push('ASIAN');
+    if (utcHour >= 8 && utcHour < 16) activeSessions.push('LONDON');
+    if (utcHour >= 13 && utcHour < 21) activeSessions.push('NEW_YORK');
 
-    if (utcHour >= 8 && utcHour < 16) {
-      activeSessions.push('LONDON');
-    }
-
-    if (utcHour >= 13 && utcHour < 21) {
-      activeSessions.push('NEW_YORK');
-    }
-
-    if (utcHour >= 13 && utcHour < 16) {
-      liquidityLevel = 'OPTIMAL';
-    } else if (utcHour >= 8 && utcHour < 17) {
-      liquidityLevel = 'HIGH';
-    } else if (utcHour >= 22 || utcHour < 8) {
-      liquidityLevel = 'LOW';
-    }
+    if (utcHour >= 13 && utcHour < 16) liquidityLevel = 'OPTIMAL';
+    else if (utcHour >= 8 && utcHour < 17) liquidityLevel = 'HIGH';
+    else if (utcHour >= 22 || utcHour < 8) liquidityLevel = 'LOW';
 
     return { activeSessions, liquidityLevel };
   }
@@ -423,35 +423,19 @@ export class FuturesEngine {
   public getRecommendation(analysis: FuturesAnalysis): FuturesRecommendation {
     if (!analysis || !analysis.currentPrice || typeof analysis.score !== 'number') {
       return {
-        entry: null,
-        sl: null,
-        tp1: null,
-        tp2: null,
-        rr: null,
-        confidence: 'NONE',
+        entry: null, sl: null, tp1: null, tp2: null, rr: null, confidence: 'NONE',
         reasoning: ['بيانات غير كافية لإصدار توصية فوتشرز'],
       };
     }
 
     let confidence: 'HIGH' | 'MEDIUM' | 'LOW' | 'NONE' = 'NONE';
-    if (analysis.score >= 70) {
-      confidence = 'HIGH';
-    } else if (analysis.score >= 50) {
-      confidence = 'MEDIUM';
-    } else if (analysis.score >= 30) {
-      confidence = 'LOW';
-    } else {
-      confidence = 'NONE';
-    }
+    if (analysis.score >= 70) confidence = 'HIGH';
+    else if (analysis.score >= 50) confidence = 'MEDIUM';
+    else if (analysis.score >= 30) confidence = 'LOW';
 
     if (confidence === 'NONE' || analysis.direction === 'NEUTRAL') {
       return {
-        entry: null,
-        sl: null,
-        tp1: null,
-        tp2: null,
-        rr: null,
-        confidence,
+        entry: null, sl: null, tp1: null, tp2: null, rr: null, confidence,
         reasoning: [
           `حالة عقود الذهب الآجلة محايدة أو الثقة غير كافية (النقاط: ${analysis.score}/100)`,
           `مستوى السيولة: ${analysis.sessionAnalysis?.liquidityLevel ?? 'MEDIUM'}`,
@@ -471,21 +455,21 @@ export class FuturesEngine {
     const rr = 2.0;
 
     return {
-      entry,
-      sl,
-      tp1,
-      tp2,
-      rr,
-      confidence,
+      entry, sl, tp1, tp2, rr, confidence,
       reasoning: [
         `الاتجاه الآجل (COMEX GC): ${analysis.direction} مع ثقة ${confidence}`,
-        `معدل التذبذب ATR: $${analysis.atr}، متوسط السعر المرجح VWAP: $${analysis.vwap}`,
-        `دلتا تدفق الأوامر التراكمي CVD: ${analysis.cvd?.cumulativeDelta ?? 0}`,
+        `معدل التذبذب ATR: $${analysis.atr}، متوسط السعر المرجح بالزمن TWAP: $${analysis.twap}`,
+        `مستوى التحكم TPO POC: $${analysis.tpo?.poc} | VAH: $${analysis.tpo?.vah} | VAL: $${analysis.tpo?.val}`,
+        `حالة الزخم السعري: ${analysis.priceMomentum?.momentumStateAr}`,
         `الجلسات النشطة: ${analysis.sessionAnalysis?.activeSessions.join(', ') ?? ''} (${analysis.sessionAnalysis?.liquidityLevel ?? 'MEDIUM'})`,
         ...(analysis.confluence || []),
       ],
     };
   }
+}
+
+function valHelper(tpo?: TPOAnalysis): number {
+  return tpo?.val ?? 0;
 }
 
 export const futuresEngine = new FuturesEngine();

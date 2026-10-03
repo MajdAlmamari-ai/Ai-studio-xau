@@ -1,0 +1,27 @@
+version: '3.9'
+
+services:
+  # In-Memory Real-Time Transport Bus (Redis Streams: spot:ticks, spot:bars, spot:signals, futures:levels)
+  redis:
+    image: redis:7-alpine
+    container_name: gold-desk-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "PING"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - gold-net
+
+networks:
+  gold-net:
+    driver: bridge
+
+volumes:
+  redis_data:

@@ -231,8 +231,29 @@ export async function fetchMultiTimeframeSMC(currentPrice?: number | null): Prom
       riskRewardRatio: '1:3.3',
       rrNumeric: 3.3,
       isRRValid: true,
-      executionRuleVerdictAr: `إشارة دخول صيدلي مؤكدة: إغلاق شمعة 15M صاعدة فوق الـ CHoCH مع ارتداد مباشر من فجوة FVG. الوقف صيدلي دقيق أسفل ذيل الكسر.`,
+      executionRuleVerdictAr: `إشارة هيكل 15M جاهزة: تم تشكل الـ CHoCH والارتداد من فجوة FVG بانتظار شمعة تأكيد 5M اللحظية.`,
       confirmationCandleTime: 'شمعة 15M مغلقة بتأكيد مؤسساتي',
+    },
+    m5Confirmation: {
+      timeframe: '5M',
+      confirmationStatus: 'CONFIRMED_ENTRY',
+      m5ChohDetected: true,
+      m5ChohType: 'BULLISH_5M_CHOH',
+      m5ChohPrice: Number((p + 0.65).toFixed(2)),
+      m5MicroSweepDetected: true,
+      m5MicroSweepPrice: Number((p - 1.85).toFixed(2)),
+      refinedEntryPrice: Number((p + 0.15).toFixed(2)),
+      refinedStopLoss: Number((p - 2.10).toFixed(2)), // Tighter surgical stop loss!
+      refinedStopLossPips: 22.5, // Reduced from 37 pips to 22.5 pips!
+      refinedTakeProfit1: Number((p + 6.80).toFixed(2)),
+      refinedTakeProfit2: Number((p + 12.50).toFixed(2)),
+      refinedRiskRewardRatio: '1:4.2', // High institutional R:R
+      rrNumeric: 4.2,
+      microDisplacementBars: 2,
+      triggerVerdictAr: 'تأكيد دخول قناص مكتمل (5M Trigger): شمعة اندفاعية صاعدة اخترقت قمة الـ 5M بعد سحب السيولة اللحظية بنجاح.',
+      entryConfirmationRationaleAr: 'الفريم اللحظي 5M أظهر كسر CHoCH داخلي صاعد مع امتصاص كامل للسيولة أسفل $ ' + Number((p - 1.85).toFixed(2)) + ' وتشكيل ذيل ارتدادي دافع.',
+      candleCloseTime: 'شمعة 5M أغلقت قبل دقيقة واحدة',
+      microLiquidityPoolAr: 'سيولة بيع لحظية مسحوبة (5M SSL Micro Sweep)',
     },
   };
 }

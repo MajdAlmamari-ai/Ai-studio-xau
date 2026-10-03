@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Layers, TrendingUp, TrendingDown, Minus, ShieldCheck, Activity, BarChart3, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Layers, TrendingUp, TrendingDown, Minus, Activity, BarChart3, AlertTriangle, RefreshCw, Clock, ShieldCheck } from 'lucide-react';
 import { FuturesAnalysis } from '../../../server/engines/FuturesEngine';
 
 interface FuturesAnalysisTabProps {
@@ -30,7 +30,7 @@ export const FuturesAnalysisTab: React.FC<FuturesAnalysisTabProps> = ({ currentP
         const errorData = await res.json();
         setError(errorData.error?.message || 'بيانات العقود الآجلة قيد المزامنة...');
       } else {
-        setError('جاري مزامنة عقود الذهب الآجلة (COMEX GC)... يرجى الانتظار');
+        setError('جاري مزامنة عقود الذهب الآجلة (COMEX GC TPO)... يرجى الانتظار');
       }
     } catch {
       setError('جاري الاتصال بخادم بيانات العقود الآجلة...');
@@ -55,17 +55,16 @@ export const FuturesAnalysisTab: React.FC<FuturesAnalysisTabProps> = ({ currentP
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-xl font-bold text-white">عقود الذهب الآجلة (COMEX GC Futures)</h2>
+              <h2 className="text-xl font-bold text-white">عقود الذهب الآجلة (COMEX GC TPO & Momentum)</h2>
               <span className="px-2 py-0.5 rounded text-[11px] font-mono bg-amber-500/10 text-amber-400 border border-amber-500/20">
                 COMEX:GC1!
               </span>
             </div>
-            <p className="text-xs text-zinc-400 mt-0.5">تحليل أحجام التداول الحقيقية من بورصة شيكاغو وتدفق الأوامر CVD</p>
+            <p className="text-xs text-zinc-400 mt-0.5">تحليل فرص السعر مع الزمن (TPO)، السعر المرجح بالزمن TWAP، وزخم السعر</p>
           </div>
         </div>
 
         <div className="flex items-center gap-4">
-          {/* Timeframe Selector */}
           <div className="flex items-center gap-1 bg-[#0A0C10] p-1 rounded-lg border border-[#1A1F2E]">
             {['5m', '15m', '1h', '4h', '1d'].map((tf) => (
               <button
@@ -142,93 +141,74 @@ export const FuturesAnalysisTab: React.FC<FuturesAnalysisTabProps> = ({ currentP
               {analysis?.score ?? 50}/100
             </span>
           </div>
-          <span className="text-[10px] text-zinc-400 mt-1 block">قوة تدفقات كبار المتداولين</span>
+          <span className="text-[10px] text-zinc-400 mt-1 block">قوة الزخم ومناطق TPO</span>
         </div>
 
-        {/* CVD Delta */}
+        {/* TPO POC & TWAP */}
         <div className="bg-[#11141D] border border-[#1E2333] rounded-xl p-4">
-          <span className="text-xs text-zinc-400 font-medium">دلتا تدفق الأوامر التراكمي (CVD)</span>
+          <span className="text-xs text-zinc-400 font-medium">مستويات TPO (POC & TWAP)</span>
           <div className="flex items-baseline gap-2 mt-2">
-            <span
-              className={`text-2xl font-black font-mono ${
-                (analysis?.cvd?.cumulativeDelta ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
-              }`}
-            >
-              {(analysis?.cvd?.cumulativeDelta ?? 0) >= 0 ? '+' : ''}
-              {analysis?.cvd?.cumulativeDelta ?? 0}
+            <span className="text-lg font-black font-mono text-cyan-400">
+              POC: ${analysis?.tpo?.poc?.toFixed(2) ?? '---'}
             </span>
-            <span className="text-xs text-zinc-400">عقد</span>
           </div>
-          <span className="text-[10px] text-zinc-400 mt-1 block">Institutional Order Flow Delta</span>
+          <span className="text-[11px] text-zinc-300 font-mono mt-1 block">TWAP: ${analysis?.twap?.toFixed(2) ?? '---'}</span>
         </div>
 
-        {/* Open Interest */}
+        {/* Price Momentum & Basis Spread */}
         <div className="bg-[#11141D] border border-[#1E2333] rounded-xl p-4">
-          <span className="text-xs text-zinc-400 font-medium">الفائدة المفتوحة (Open Interest)</span>
+          <span className="text-xs text-zinc-400 font-medium">زخم السعر والفرق الأساسي (Basis)</span>
           <div className="flex items-baseline gap-2 mt-2">
-            <span className="text-2xl font-black font-mono text-cyan-400">
-              {analysis?.openInterest ? analysis.openInterest.toLocaleString() : 'غير متاح'}
+            <span className="text-lg font-black font-mono text-emerald-400">
+              Basis: ${analysis?.priceMomentum?.basisSpread ?? 0.00}
             </span>
-            {analysis?.openInterest ? <span className="text-xs text-zinc-400">عقد</span> : null}
           </div>
-          <span className="text-[10px] text-zinc-400 mt-1 block">حجم المراكز المفتوحة في COMEX</span>
+          <span className="text-[10px] text-zinc-400 mt-1 block">{analysis?.priceMomentum?.momentumStateAr ?? 'مستقر'}</span>
         </div>
       </div>
 
-      {/* CVD Volume Details & Structure */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* CVD Breakdown */}
-        <div className="bg-[#11141D] border border-[#1E2333] rounded-xl p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <BarChart3 className="w-5 h-5 text-amber-400" />
-            <h3 className="font-bold text-white">تفصيل أحجام الشراء والبيع (Institutional Volume)</h3>
+      {/* TPO Value Area Details Section */}
+      <div className="bg-[#11141D] border border-[#1E2333] rounded-xl p-6">
+        <h3 className="text-base font-bold text-white mb-4 flex items-center gap-2">
+          <Activity className="w-5 h-5 text-amber-400" />
+          تحليل مناطق القيمة الزمنية (Time Price Opportunity - TPO Value Area 70%)
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="p-4 rounded-xl bg-[#161B26] border border-[#232A3B]">
+            <span className="text-xs text-zinc-400 block">الحد العلوي لمنطقة القيمة (VAH)</span>
+            <span className="text-xl font-bold font-mono text-emerald-400 mt-1 block">${analysis?.tpo?.vah?.toFixed(2) ?? '---'}</span>
+            <span className="text-[10px] text-zinc-400 mt-1 block">مقاومة الوقت والزخم العلوي</span>
           </div>
-
-          <div className="grid grid-cols-2 gap-3 font-mono text-sm">
-            <div className="bg-[#0A0C10] p-3 rounded-lg border border-[#1E2333]">
-              <span className="text-xs text-zinc-400 block font-sans">حجم الشراء القوي (Buy Vol)</span>
-              <span className="text-lg font-bold text-emerald-400 mt-1 block">
-                {analysis?.cvd?.buyVolume ? `${analysis.cvd.buyVolume.toLocaleString()} عقد` : '—'}
-              </span>
-            </div>
-
-            <div className="bg-[#0A0C10] p-3 rounded-lg border border-[#1E2333]">
-              <span className="text-xs text-zinc-400 block font-sans">حجم البيع القوي (Sell Vol)</span>
-              <span className="text-lg font-bold text-rose-400 mt-1 block">
-                {analysis?.cvd?.sellVolume ? `${analysis.cvd.sellVolume.toLocaleString()} عقد` : '—'}
-              </span>
-            </div>
+          <div className="p-4 rounded-xl bg-[#161B26] border border-[#232A3B]">
+            <span className="text-xs text-zinc-400 block">نقطة التحكم الزمنية (POC)</span>
+            <span className="text-xl font-bold font-mono text-amber-400 mt-1 block">${analysis?.tpo?.poc?.toFixed(2) ?? '---'}</span>
+            <span className="text-[10px] text-zinc-400 mt-1 block">التركيز الزمني الأعلى للسعر</span>
           </div>
-
-          <div className="mt-4 p-3 bg-[#0A0C10] rounded-lg border border-[#1E2333] flex items-center justify-between text-xs text-zinc-400 font-mono">
-            <span>متوسط المدى (ATR 14): ${analysis?.atr?.toFixed(2) ?? '5.00'}</span>
-            <span>نقطة الارتكاز (VWAP): ${analysis?.vwap?.toFixed(2) ?? displayPrice.toFixed(2)}</span>
-          </div>
-        </div>
-
-        {/* Confluence & Order Blocks */}
-        <div className="bg-[#11141D] border border-[#1E2333] rounded-xl p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <Activity className="w-5 h-5 text-amber-400" />
-            <h3 className="font-bold text-white">إشارات وتأكيدات العقود الآجلة</h3>
-          </div>
-
-          <div className="space-y-2">
-            {analysis?.confluence && analysis.confluence.length > 0 ? (
-              analysis.confluence.map((conf, idx) => (
-                <div key={idx} className="flex items-center gap-2 text-xs text-zinc-300 bg-[#0A0C10] p-2.5 rounded-lg border border-[#1A1F2E]">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0"></span>
-                  <span>{conf}</span>
-                </div>
-              ))
-            ) : (
-              <div className="text-xs text-zinc-400 p-4 text-center bg-[#0A0C10] rounded-lg border border-[#1A1F2E]">
-                لا توجد عوامل تأكيد واضحة في الوقت الحالي
-              </div>
-            )}
+          <div className="p-4 rounded-xl bg-[#161B26] border border-[#232A3B]">
+            <span className="text-xs text-zinc-400 block">الحد السفلي لمنطقة القيمة (VAL)</span>
+            <span className="text-xl font-bold font-mono text-rose-400 mt-1 block">${analysis?.tpo?.val?.toFixed(2) ?? '---'}</span>
+            <span className="text-[10px] text-zinc-400 mt-1 block">دعم الوقت والزخم السفلي</span>
           </div>
         </div>
       </div>
+
+      {/* Confluence & Reasoning */}
+      {analysis?.confluence && analysis.confluence.length > 0 && (
+        <div className="bg-[#11141D] border border-[#1E2333] rounded-xl p-6">
+          <h3 className="text-base font-bold text-white mb-3 flex items-center gap-2">
+            <ShieldCheck className="w-5 h-5 text-emerald-400" />
+            التوافق المؤسساتي وإشارات الاختراق
+          </h3>
+          <ul className="space-y-2">
+            {analysis.confluence.map((c, idx) => (
+              <li key={idx} className="text-sm text-zinc-300 flex items-start gap-2 bg-[#161B26] p-3 rounded-lg border border-[#232A3B]">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 mt-2 flex-shrink-0" />
+                <span>{c}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 };

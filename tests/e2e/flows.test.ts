@@ -71,11 +71,12 @@ test('E2E Full Platform Integration Flows (Batch 27.1)', async (t) => {
     assert.ok(['LONG', 'SHORT', 'NEUTRAL'].includes(spotResult.direction));
   });
 
-  await t.test('Flow 2: Futures Analysis Flow calculates CVD correctly', async () => {
+  await t.test('Flow 2: Futures Analysis Flow calculates TPO and Price Momentum correctly', async () => {
     const futuresResult = await futuresEngine.analyze('15m');
     assert.ok(futuresResult);
     assert.strictEqual(futuresResult.symbol, 'COMEX:GC1!');
-    assert.ok(futuresResult.cvd && typeof futuresResult.cvd.cumulativeDelta === 'number');
+    assert.ok(futuresResult.tpo && typeof futuresResult.tpo.poc === 'number');
+    assert.ok(futuresResult.priceMomentum && typeof futuresResult.priceMomentum.basisSpread === 'number');
     assert.ok(futuresResult.score >= 0 && futuresResult.score <= 100);
   });
 

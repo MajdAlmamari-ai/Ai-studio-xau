@@ -19,6 +19,18 @@
     "paths": {
       "@/*": [
         "./*"
+      ],
+      "@shared/*": [
+        "./shared/*"
+      ],
+      "@spot/*": [
+        "./spot_engine/ts/*"
+      ],
+      "@orchestrator/*": [
+        "./orchestrator/ts/*"
+      ],
+      "@execution/*": [
+        "./execution/ts/*"
       ]
     },
     "allowImportingTsExtensions": true,
